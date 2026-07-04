@@ -10,6 +10,7 @@ function router() {
 }
 
 (function start() {
+  document.getElementById("version").textContent = `v${APP_VERSION}`;
   S = Store.init();
   router();
   window.addEventListener("hashchange", () => { window.scrollTo(0, 0); router(); });
