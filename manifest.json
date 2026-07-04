@@ -1,0 +1,12 @@
+{
+  "name": "NOMBRE_DE_LA_APP",
+  "short_name": "NOMBRE_DE_LA_APP",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "img/logo-icon.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}

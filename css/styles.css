@@ -1,0 +1,20 @@
+:root{
+  --bg:#0f1115; --card:#171a21; --line:#262b36; --linesoft:#1d212a;
+  --texto:#e8eaed; --muted:#8b93a3; --accent:#4f8cff; --accent2:#2a9d5c;
+  --verde:#122019; --verdeHdr:#1b3a2c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.muted{color:var(--muted)}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-touch-callout:none}
+.brand-logo{width:32px;height:32px;pointer-events:none;-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
+.brand h1{font-size:16px;margin:0}
+#app{padding:16px;max-width:900px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.btn{background:var(--card);color:var(--texto);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.sec{opacity:.85}
+#toasts{position:fixed;left:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:999}
+.toast{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
