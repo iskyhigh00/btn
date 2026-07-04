@@ -208,9 +208,13 @@ function _contenidoHTML(b) {
   // de abajo (el sustantivo contable, "CRÉDITO/S") cambia según el número.
   const arriba = c.arriba || "";
   const abajo = pluralizar(c.numero, c.abajo);
-  const fsArriba = (b.h * 0.16).toFixed(2);
-  const fsNumero = (b.h * 0.4).toFixed(2);
-  const fsAbajo = (b.h * 0.16).toFixed(2);
+  // El tamaño de letra se calcula sobre el alto ÚTIL (descontando el padding
+  // vertical), no el alto total del botón: así "separación arriba/abajo" se
+  // nota siempre, aunque el texto sea corto y nunca llegara a desbordar.
+  const altoUtil = Math.max(4, b.h - 2 * (b.paddingVMm ?? 3));
+  const fsArriba = (altoUtil * 0.16).toFixed(2);
+  const fsNumero = (altoUtil * 0.4).toFixed(2);
+  const fsAbajo = (altoUtil * 0.16).toFixed(2);
   let html = "";
   if (arriba) html += `<div class="boton-linea boton-linea-arriba" style="font-size:${fsArriba}mm">${esc(arriba)}</div>`;
   if (c.numero != null && c.numero !== "") html += `<div class="boton-numero" style="font-size:${fsNumero}mm">${esc(c.numero)}</div>`;
