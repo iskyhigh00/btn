@@ -203,6 +203,7 @@ function _pintarBoton(el, b) {
   el.style.background = b.fondo;
   el.style.color = b.color;
   el.style.borderRadius = formaRadioCss(b);
+  el.style.padding = `${b.paddingMm ?? 3}mm`;
   el.classList.toggle("seleccionado", _estaResaltado(b));
   el.innerHTML = _contenidoHTML(b);
   _ajustarTextoAncho(el);
@@ -377,6 +378,8 @@ function _enlazarFormSeleccionMultiple() {
   document.getElementById("ms-w").onchange = persistir;
   document.getElementById("ms-h").oninput = (e) => { const v = Number(e.target.value); if (v) seleccionados().forEach((b) => (b.h = v)); refrescarTodos(); };
   document.getElementById("ms-h").onchange = persistir;
+  document.getElementById("ms-padding").oninput = (e) => { const v = Number(e.target.value) || 0; seleccionados().forEach((b) => (b.paddingMm = v)); refrescarTodos(); };
+  document.getElementById("ms-padding").onchange = persistir;
 
   document.getElementById("ms-forma").onchange = (e) => {
     seleccionados().forEach((b) => (b.forma = e.target.value));
@@ -437,6 +440,7 @@ function _bloqueFormaTamano(pfx, d) {
       <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="${d.h ?? 40}"></label>
     </div>
     <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
+    <label class="campo">Separación texto/borde (mm)<input id="${pfx}-padding" type="number" min="0" step="0.5" value="${d.paddingMm ?? 3}"></label>
     <div id="${pfx}-radio-wrap" style="display:${(d.forma ?? "cuadrado") === "redondeado" ? "" : "none"}">${_campoRadio(d.radioMm)}</div>
     <div class="fila-plantilla">
       <select id="${pfx}-plantilla"></select>
@@ -484,14 +488,17 @@ function _enlazarPlantillas(pfx) {
     const campoH = document.getElementById(`${pfx}-h`);
     const campoForma = document.getElementById(`${pfx}-forma`);
     const campoRadio = document.getElementById("c-radio");
+    const campoPadding = document.getElementById(`${pfx}-padding`);
     campoW.value = p.w;
     campoH.value = p.h;
     campoForma.value = p.forma;
     if (campoRadio) campoRadio.value = p.radioMm || 0;
+    if (campoPadding) campoPadding.value = p.paddingMm ?? 3;
     // Dispara los eventos para que los listeners ya enganchados (vivos o no) reaccionen.
     [campoW, campoH].forEach((c) => { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); });
     campoForma.dispatchEvent(new Event("change"));
     if (campoRadio) { campoRadio.dispatchEvent(new Event("input")); campoRadio.dispatchEvent(new Event("change")); }
+    if (campoPadding) { campoPadding.dispatchEvent(new Event("input")); campoPadding.dispatchEvent(new Event("change")); }
     sel.value = "";
   };
 
@@ -504,6 +511,7 @@ function _enlazarPlantillas(pfx) {
         h: Number(document.getElementById(`${pfx}-h`).value),
         forma: document.getElementById(`${pfx}-forma`).value,
         radioMm: Number(document.getElementById("c-radio")?.value) || 0,
+        paddingMm: Number(document.getElementById(`${pfx}-padding`)?.value) || 0,
       };
       S = Store.guardarPlantilla(nombre, datos);
       pintarOpciones();
@@ -552,7 +560,7 @@ function _enlazarFormAgregar() {
 
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
-      id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
+      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
       contenido: { tipo: "texto", arriba: u.arriba, numero: null, abajo: u.abajo },
     });
   };
@@ -565,7 +573,7 @@ function _enlazarFormAgregar() {
     reader.onload = () => {
       const logoId = Store.agregarLogo(reader.result);
       _crearYSeleccionar({
-        id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
         contenido: { tipo: "logo", logoId, zoom: 1, offsetX: 0, offsetY: 0 },
       });
     };
@@ -592,6 +600,7 @@ function _enlazarFormAgregar() {
     const h = Number(document.getElementById("l-h").value);
     const forma = document.getElementById("l-forma").value;
     const radioMm = Number(document.getElementById("c-radio")?.value) || 3;
+    const paddingMm = Number(document.getElementById("l-padding")?.value) || 0;
     const fondo = document.getElementById("l-fondo").value;
     const color = document.getElementById("l-color").value;
     const arriba = document.getElementById("l-arriba").value;
@@ -600,7 +609,7 @@ function _enlazarFormAgregar() {
     let primero = null;
     numeros.forEach((n) => {
       const boton = {
-        id: uid(), forma, radioMm, w, h, fondo, color, grupoId,
+        id: uid(), forma, radioMm, paddingMm, w, h, fondo, color, grupoId,
         contenido: { tipo: "texto", arriba, numero: n, abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
@@ -609,7 +618,7 @@ function _enlazarFormAgregar() {
       S = Store.agregarBoton(_hojaActual().id, boton);
       if (!primero) primero = boton.id;
     });
-    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, fondo, color });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, paddingMm, fondo, color });
     _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
@@ -627,7 +636,7 @@ function _renderLogosExistentesAgregar() {
   cont.querySelectorAll(".logo-thumb").forEach((img) => {
     img.onclick = () => {
       _crearYSeleccionar({
-        id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
         contenido: { tipo: "logo", logoId: img.dataset.logoId, zoom: 1, offsetX: 0, offsetY: 0 },
       });
     };
@@ -698,7 +707,7 @@ function _enlazarFormEditar(b) {
   const persistir = () => {
     Store.guardar();
     Store.actualizarUltimoUsado({
-      forma: b.forma, radioMm: b.radioMm, w: b.w, h: b.h, fondo: b.fondo,
+      forma: b.forma, radioMm: b.radioMm, paddingMm: b.paddingMm, w: b.w, h: b.h, fondo: b.fondo,
       color: b.contenido.tipo === "texto" ? b.color : undefined,
       arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
       abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
@@ -709,6 +718,8 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-w").onchange = persistir;
   document.getElementById("e-h").oninput = (e) => { b.h = Number(e.target.value) || b.h; refrescar(); };
   document.getElementById("e-h").onchange = persistir;
+  document.getElementById("e-padding").oninput = (e) => { b.paddingMm = Number(e.target.value) || 0; refrescar(); };
+  document.getElementById("e-padding").onchange = persistir;
 
   document.getElementById("e-forma").onchange = (e) => {
     b.forma = e.target.value;
@@ -804,7 +815,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     const base = miembros()[0];
     if (base) {
       Store.actualizarUltimoUsado({
-        forma: base.forma, radioMm: base.radioMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
+        forma: base.forma, radioMm: base.radioMm, paddingMm: base.paddingMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
         arriba: base.contenido.arriba, abajo: base.contenido.abajo,
       });
     }
@@ -819,6 +830,8 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-w").onchange = persistir;
   document.getElementById("gr-h").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.h = v)); refrescarTodos(); };
   document.getElementById("gr-h").onchange = persistir;
+  document.getElementById("gr-padding").oninput = (e) => { const v = Number(e.target.value) || 0; miembros().forEach((m) => (m.paddingMm = v)); refrescarTodos(); };
+  document.getElementById("gr-padding").onchange = persistir;
 
   document.getElementById("gr-forma").onchange = (e) => {
     miembros().forEach((m) => (m.forma = e.target.value));
@@ -849,7 +862,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     nuevos.forEach((n) => {
       if (actualesNums.includes(n)) return;
       const nuevoBoton = {
-        id: uid(), forma: base.forma, radioMm: base.radioMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
+        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingMm: base.paddingMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
         contenido: { tipo: "texto", arriba: base.contenido.arriba, numero: n, abajo: base.contenido.abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);

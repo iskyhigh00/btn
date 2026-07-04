@@ -1,4 +1,4 @@
-const CACHE = "botonera-v0.5.1";
+const CACHE = "botonera-v0.6.0";
 const HTML = ["./", "./index.html"];
 const ASSETS = [
   "./css/styles.css",

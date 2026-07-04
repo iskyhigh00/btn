@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.5.1";
+const APP_VERSION = "0.6.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -170,29 +170,57 @@ function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-// Reacomoda todos los botones de una hoja en filas prolijas (igual alto por
-// fila) para que se pueda cortar con guillotina: primero cortes horizontales
-// de lado a lado, después cada fila se corta en columnas por separado.
+// Junta en un mismo "bloque" los botones que se puedan cortar juntos con
+// líneas rectas compartidas: los de un mismo grupo (lista de números) o,
+// si están sueltos, los que compartan tamaño y forma exactos.
+function _agruparEnBloques(botones) {
+  const porClave = new Map();
+  botones.forEach((b) => {
+    const clave = b.grupoId || `${b.w}x${b.h}x${b.forma}`;
+    if (!porClave.has(clave)) porClave.set(clave, []);
+    porClave.get(clave).push(b);
+  });
+  return [...porClave.values()];
+}
+
+// Acomoda los miembros de un bloque (todos del mismo w/h) en una grilla lo
+// más cuadrada posible: así un solo corte horizontal o vertical separa a
+// varios botones de una sola vez, en vez de uno por uno.
+function _armarGrillaBloque(miembros, gap) {
+  miembros.sort((a, b) => (a.contenido?.numero ?? 0) - (b.contenido?.numero ?? 0));
+  const n = miembros.length;
+  const w = miembros[0].w, h = miembros[0].h;
+  const cols = Math.min(n, Math.ceil(Math.sqrt(n)));
+  return {
+    ancho: cols * w + (cols - 1) * gap,
+    alto: Math.ceil(n / cols) * h + (Math.ceil(n / cols) - 1) * gap,
+    colocar(offsetX, offsetY) {
+      miembros.forEach((b, i) => {
+        b.x = offsetX + (i % cols) * (w + gap);
+        b.y = offsetY + Math.floor(i / cols) * (h + gap);
+      });
+    },
+  };
+}
+
+// Reacomoda todos los botones de una hoja agrupando los de igual tamaño en
+// grillas cuadradas y esas grillas en filas prolijas, para que se pueda
+// cortar con guillotina: cortes rectos que separan varios botones a la vez.
 // Muta boton.x/boton.y de cada botón recibido.
 function reorganizarBotones(botones, gapMm) {
   const gap = gapMm ?? SEPARACION_MM;
-  const ordenados = [...botones].sort((a, b) => {
-    if (b.h !== a.h) return b.h - a.h;
-    const ga = a.grupoId || a.id, gb = b.grupoId || b.id;
-    if (ga !== gb) return ga < gb ? -1 : 1;
-    return (a.contenido.numero ?? 0) - (b.contenido.numero ?? 0);
-  });
+  const bloques = _agruparEnBloques(botones).map((miembros) => _armarGrillaBloque(miembros, gap));
+  bloques.sort((a, b) => b.alto - a.alto || b.ancho - a.ancho);
   let x = gap, y = gap, altoFila = 0;
-  ordenados.forEach((b) => {
-    if (x + b.w > HOJA_ANCHO_MM - gap) {
+  bloques.forEach((caja) => {
+    if (x + caja.ancho > HOJA_ANCHO_MM - gap) {
       x = gap;
       y += altoFila + gap;
       altoFila = 0;
     }
-    b.x = x;
-    b.y = y;
-    x += b.w + gap;
-    altoFila = Math.max(altoFila, b.h);
+    caja.colocar(x, y);
+    x += caja.ancho + gap;
+    altoFila = Math.max(altoFila, caja.alto);
   });
 }
 
