@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.7.1";
+const APP_VERSION = "0.8.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -12,8 +12,10 @@ const CORTE_GROSOR_MM = 0.15;
 const PX_POR_MM = 96 / 25.4;
 // Separación por defecto entre botones: tiene que ser mayor que
 // CORTE_GAP_MM + CORTE_LARGO_MM (3.6mm) o la marca de corte de un botón queda
-// tapada por el botón de al lado.
-const SEPARACION_MM = 5;
+// tapada por el botón de al lado. Se deja lo más chica posible (con un poco
+// de margen) para que quepan más botones y una sola pasada de guillotina
+// alcance para separarlos.
+const SEPARACION_MM = 4;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({

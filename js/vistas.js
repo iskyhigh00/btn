@@ -208,13 +208,29 @@ function _contenidoHTML(b) {
   // de abajo (el sustantivo contable, "CRÉDITO/S") cambia según el número.
   const arriba = c.arriba || "";
   const abajo = pluralizar(c.numero, c.abajo);
+  const tieneNumero = c.numero != null && c.numero !== "";
   // El tamaño de letra se calcula sobre el alto ÚTIL (descontando el padding
   // vertical), no el alto total del botón: así "separación arriba/abajo" se
   // nota siempre, aunque el texto sea corto y nunca llegara a desbordar.
   const altoUtil = Math.max(4, b.h - 2 * (b.paddingVMm ?? 3));
-  const fsArriba = (altoUtil * 0.16).toFixed(2);
-  const fsNumero = (altoUtil * 0.4).toFixed(2);
-  const fsAbajo = (altoUtil * 0.16).toFixed(2);
+  // Cuantas menos líneas tenga el botón, más grande puede ir cada una: un
+  // botón de una sola línea ("SERVICIO") no debe verse chico como si fuera
+  // la etiqueta superior de un diseño de 3 líneas.
+  const lineasActivas = [!!arriba, tieneNumero, !!abajo].filter(Boolean).length;
+  // Valores por defecto (diseño de 3 líneas); las ramas de abajo solo pisan
+  // los que correspondan, así el que no se usa nunca queda "undefined".
+  let fsArriba = altoUtil * 0.16, fsNumero = altoUtil * 0.4, fsAbajo = altoUtil * 0.16;
+  if (lineasActivas <= 1) {
+    fsArriba = fsNumero = fsAbajo = altoUtil * 0.5;
+  } else if (lineasActivas === 2 && tieneNumero) {
+    fsNumero = altoUtil * 0.5;
+    fsArriba = fsAbajo = altoUtil * 0.22;
+  } else if (lineasActivas === 2) {
+    fsArriba = fsAbajo = altoUtil * 0.3;
+  }
+  fsArriba = fsArriba.toFixed(2);
+  fsNumero = fsNumero.toFixed(2);
+  fsAbajo = fsAbajo.toFixed(2);
   let html = "";
   if (arriba) html += `<div class="boton-linea boton-linea-arriba" style="font-size:${fsArriba}mm">${esc(arriba)}</div>`;
   if (c.numero != null && c.numero !== "") html += `<div class="boton-numero" style="font-size:${fsNumero}mm">${esc(c.numero)}</div>`;
