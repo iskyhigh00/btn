@@ -6,7 +6,7 @@ const Store = (function () {
   const KEY = "botonera_estado";
 
   function _ultimoUsadoDefault() {
-    return { arriba: "", abajo: "", forma: "cuadrado", w: 40, h: 40, radioMm: 3, paddingMm: 3, fondo: "#ffffff", color: "#000000" };
+    return { arriba: "", abajo: "", forma: "cuadrado", w: 40, h: 40, radioMm: 3, paddingHMm: 3, paddingVMm: 3, fondo: "#ffffff", color: "#000000" };
   }
 
   function _defaults() {

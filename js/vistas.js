@@ -169,7 +169,31 @@ function _renderHoja() {
   const h = _hojaActual();
   hojaEl.innerHTML = _marcasHtml(h.botones) + h.botones.map((b) => `<div class="boton-print" data-id="${b.id}"></div>`).join("");
   h.botones.forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
+  _sincronizarTextoGrupos(h);
   _enlazarBotones();
+}
+
+// Dentro de un mismo grupo (lista de números), cada botón achica su letra
+// según el largo de SU propia palabra (ej. "LÍNEA" vs "LÍNEAS"), lo que deja
+// tamaños de letra distintos entre botones que deberían verse iguales. Acá
+// se empareja: cada línea usa el tamaño más chico que necesitó cualquier
+// miembro del grupo, para que el grupo entero se vea uniforme.
+function _sincronizarTextoGrupos(hoja) {
+  const gruposIds = new Set(hoja.botones.filter((b) => b.grupoId).map((b) => b.grupoId));
+  gruposIds.forEach((gid) => {
+    const miembros = hoja.botones.filter((b) => b.grupoId === gid);
+    const els = miembros.map((m) => document.querySelector(`.boton-print[data-id="${m.id}"]`)).filter(Boolean);
+    if (els.length < 2) return;
+    [".boton-linea-arriba", ".boton-numero", ".boton-linea-abajo"].forEach((selector) => _sincronizarRol(els, selector));
+  });
+}
+
+function _sincronizarRol(els, selector) {
+  const nodos = els.map((el) => el.querySelector(selector)).filter(Boolean);
+  if (nodos.length < 2) return;
+  const minSize = Math.min(...nodos.map((n) => parseFloat(n.style.fontSize) || Infinity));
+  if (!isFinite(minSize)) return;
+  nodos.forEach((n) => { n.style.fontSize = `${minSize.toFixed(2)}mm`; });
 }
 
 function _contenidoHTML(b) {
@@ -188,9 +212,9 @@ function _contenidoHTML(b) {
   const fsNumero = (b.h * 0.4).toFixed(2);
   const fsAbajo = (b.h * 0.16).toFixed(2);
   let html = "";
-  if (arriba) html += `<div class="boton-linea" style="font-size:${fsArriba}mm">${esc(arriba)}</div>`;
+  if (arriba) html += `<div class="boton-linea boton-linea-arriba" style="font-size:${fsArriba}mm">${esc(arriba)}</div>`;
   if (c.numero != null && c.numero !== "") html += `<div class="boton-numero" style="font-size:${fsNumero}mm">${esc(c.numero)}</div>`;
-  if (abajo) html += `<div class="boton-linea" style="font-size:${fsAbajo}mm">${esc(abajo)}</div>`;
+  if (abajo) html += `<div class="boton-linea boton-linea-abajo" style="font-size:${fsAbajo}mm">${esc(abajo)}</div>`;
   return html;
 }
 
@@ -203,7 +227,7 @@ function _pintarBoton(el, b) {
   el.style.background = b.fondo;
   el.style.color = b.color;
   el.style.borderRadius = formaRadioCss(b);
-  el.style.padding = `${b.paddingMm ?? 3}mm`;
+  el.style.padding = `${b.paddingVMm ?? 3}mm ${b.paddingHMm ?? 3}mm`;
   el.classList.toggle("seleccionado", _estaResaltado(b));
   el.innerHTML = _contenidoHTML(b);
   _ajustarTextoAncho(el);
@@ -378,8 +402,10 @@ function _enlazarFormSeleccionMultiple() {
   document.getElementById("ms-w").onchange = persistir;
   document.getElementById("ms-h").oninput = (e) => { const v = Number(e.target.value); if (v) seleccionados().forEach((b) => (b.h = v)); refrescarTodos(); };
   document.getElementById("ms-h").onchange = persistir;
-  document.getElementById("ms-padding").oninput = (e) => { const v = Number(e.target.value) || 0; seleccionados().forEach((b) => (b.paddingMm = v)); refrescarTodos(); };
-  document.getElementById("ms-padding").onchange = persistir;
+  document.getElementById("ms-paddingh").oninput = (e) => { const v = Number(e.target.value) || 0; seleccionados().forEach((b) => (b.paddingHMm = v)); refrescarTodos(); };
+  document.getElementById("ms-paddingh").onchange = persistir;
+  document.getElementById("ms-paddingv").oninput = (e) => { const v = Number(e.target.value) || 0; seleccionados().forEach((b) => (b.paddingVMm = v)); refrescarTodos(); };
+  document.getElementById("ms-paddingv").onchange = persistir;
 
   document.getElementById("ms-forma").onchange = (e) => {
     seleccionados().forEach((b) => (b.forma = e.target.value));
@@ -440,7 +466,10 @@ function _bloqueFormaTamano(pfx, d) {
       <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="${d.h ?? 40}"></label>
     </div>
     <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
-    <label class="campo">Separación texto/borde (mm)<input id="${pfx}-padding" type="number" min="0" step="0.5" value="${d.paddingMm ?? 3}"></label>
+    <div class="fila-2">
+      <label class="campo">Separación izq/der (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
+      <label class="campo">Separación arriba/abajo (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
+    </div>
     <div id="${pfx}-radio-wrap" style="display:${(d.forma ?? "cuadrado") === "redondeado" ? "" : "none"}">${_campoRadio(d.radioMm)}</div>
     <div class="fila-plantilla">
       <select id="${pfx}-plantilla"></select>
@@ -488,17 +517,19 @@ function _enlazarPlantillas(pfx) {
     const campoH = document.getElementById(`${pfx}-h`);
     const campoForma = document.getElementById(`${pfx}-forma`);
     const campoRadio = document.getElementById("c-radio");
-    const campoPadding = document.getElementById(`${pfx}-padding`);
+    const campoPaddingH = document.getElementById(`${pfx}-paddingh`);
+    const campoPaddingV = document.getElementById(`${pfx}-paddingv`);
     campoW.value = p.w;
     campoH.value = p.h;
     campoForma.value = p.forma;
     if (campoRadio) campoRadio.value = p.radioMm || 0;
-    if (campoPadding) campoPadding.value = p.paddingMm ?? 3;
+    if (campoPaddingH) campoPaddingH.value = p.paddingHMm ?? 3;
+    if (campoPaddingV) campoPaddingV.value = p.paddingVMm ?? 3;
     // Dispara los eventos para que los listeners ya enganchados (vivos o no) reaccionen.
     [campoW, campoH].forEach((c) => { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); });
     campoForma.dispatchEvent(new Event("change"));
     if (campoRadio) { campoRadio.dispatchEvent(new Event("input")); campoRadio.dispatchEvent(new Event("change")); }
-    if (campoPadding) { campoPadding.dispatchEvent(new Event("input")); campoPadding.dispatchEvent(new Event("change")); }
+    [campoPaddingH, campoPaddingV].forEach((c) => { if (c) { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); } });
     sel.value = "";
   };
 
@@ -511,7 +542,8 @@ function _enlazarPlantillas(pfx) {
         h: Number(document.getElementById(`${pfx}-h`).value),
         forma: document.getElementById(`${pfx}-forma`).value,
         radioMm: Number(document.getElementById("c-radio")?.value) || 0,
-        paddingMm: Number(document.getElementById(`${pfx}-padding`)?.value) || 0,
+        paddingHMm: Number(document.getElementById(`${pfx}-paddingh`)?.value) || 0,
+        paddingVMm: Number(document.getElementById(`${pfx}-paddingv`)?.value) || 0,
       };
       S = Store.guardarPlantilla(nombre, datos);
       pintarOpciones();
@@ -560,7 +592,7 @@ function _enlazarFormAgregar() {
 
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
-      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
+      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
       contenido: { tipo: "texto", arriba: u.arriba, numero: null, abajo: u.abajo },
     });
   };
@@ -573,7 +605,7 @@ function _enlazarFormAgregar() {
     reader.onload = () => {
       const logoId = Store.agregarLogo(reader.result);
       _crearYSeleccionar({
-        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
         contenido: { tipo: "logo", logoId, zoom: 1, offsetX: 0, offsetY: 0 },
       });
     };
@@ -600,7 +632,8 @@ function _enlazarFormAgregar() {
     const h = Number(document.getElementById("l-h").value);
     const forma = document.getElementById("l-forma").value;
     const radioMm = Number(document.getElementById("c-radio")?.value) || 3;
-    const paddingMm = Number(document.getElementById("l-padding")?.value) || 0;
+    const paddingHMm = Number(document.getElementById("l-paddingh")?.value) || 0;
+    const paddingVMm = Number(document.getElementById("l-paddingv")?.value) || 0;
     const fondo = document.getElementById("l-fondo").value;
     const color = document.getElementById("l-color").value;
     const arriba = document.getElementById("l-arriba").value;
@@ -609,7 +642,7 @@ function _enlazarFormAgregar() {
     let primero = null;
     numeros.forEach((n) => {
       const boton = {
-        id: uid(), forma, radioMm, paddingMm, w, h, fondo, color, grupoId,
+        id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId,
         contenido: { tipo: "texto", arriba, numero: n, abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
@@ -618,7 +651,7 @@ function _enlazarFormAgregar() {
       S = Store.agregarBoton(_hojaActual().id, boton);
       if (!primero) primero = boton.id;
     });
-    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, paddingMm, fondo, color });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
     _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
@@ -636,7 +669,7 @@ function _renderLogosExistentesAgregar() {
   cont.querySelectorAll(".logo-thumb").forEach((img) => {
     img.onclick = () => {
       _crearYSeleccionar({
-        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingMm: u.paddingMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
         contenido: { tipo: "logo", logoId: img.dataset.logoId, zoom: 1, offsetX: 0, offsetY: 0 },
       });
     };
@@ -707,7 +740,7 @@ function _enlazarFormEditar(b) {
   const persistir = () => {
     Store.guardar();
     Store.actualizarUltimoUsado({
-      forma: b.forma, radioMm: b.radioMm, paddingMm: b.paddingMm, w: b.w, h: b.h, fondo: b.fondo,
+      forma: b.forma, radioMm: b.radioMm, paddingHMm: b.paddingHMm, paddingVMm: b.paddingVMm, w: b.w, h: b.h, fondo: b.fondo,
       color: b.contenido.tipo === "texto" ? b.color : undefined,
       arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
       abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
@@ -718,8 +751,10 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-w").onchange = persistir;
   document.getElementById("e-h").oninput = (e) => { b.h = Number(e.target.value) || b.h; refrescar(); };
   document.getElementById("e-h").onchange = persistir;
-  document.getElementById("e-padding").oninput = (e) => { b.paddingMm = Number(e.target.value) || 0; refrescar(); };
-  document.getElementById("e-padding").onchange = persistir;
+  document.getElementById("e-paddingh").oninput = (e) => { b.paddingHMm = Number(e.target.value) || 0; refrescar(); };
+  document.getElementById("e-paddingh").onchange = persistir;
+  document.getElementById("e-paddingv").oninput = (e) => { b.paddingVMm = Number(e.target.value) || 0; refrescar(); };
+  document.getElementById("e-paddingv").onchange = persistir;
 
   document.getElementById("e-forma").onchange = (e) => {
     b.forma = e.target.value;
@@ -808,6 +843,7 @@ function _enlazarFormEditarGrupo(grupoId) {
 
   const refrescarTodos = () => {
     miembros().forEach((m) => _pintarBoton(document.querySelector(`.boton-print[data-id="${m.id}"]`), m));
+    _sincronizarTextoGrupos(_hojaActual());
     _renderMarcasCorte();
   };
   const persistir = () => {
@@ -815,7 +851,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     const base = miembros()[0];
     if (base) {
       Store.actualizarUltimoUsado({
-        forma: base.forma, radioMm: base.radioMm, paddingMm: base.paddingMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
+        forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
         arriba: base.contenido.arriba, abajo: base.contenido.abajo,
       });
     }
@@ -830,8 +866,10 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-w").onchange = persistir;
   document.getElementById("gr-h").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.h = v)); refrescarTodos(); };
   document.getElementById("gr-h").onchange = persistir;
-  document.getElementById("gr-padding").oninput = (e) => { const v = Number(e.target.value) || 0; miembros().forEach((m) => (m.paddingMm = v)); refrescarTodos(); };
-  document.getElementById("gr-padding").onchange = persistir;
+  document.getElementById("gr-paddingh").oninput = (e) => { const v = Number(e.target.value) || 0; miembros().forEach((m) => (m.paddingHMm = v)); refrescarTodos(); };
+  document.getElementById("gr-paddingh").onchange = persistir;
+  document.getElementById("gr-paddingv").oninput = (e) => { const v = Number(e.target.value) || 0; miembros().forEach((m) => (m.paddingVMm = v)); refrescarTodos(); };
+  document.getElementById("gr-paddingv").onchange = persistir;
 
   document.getElementById("gr-forma").onchange = (e) => {
     miembros().forEach((m) => (m.forma = e.target.value));
@@ -862,7 +900,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     nuevos.forEach((n) => {
       if (actualesNums.includes(n)) return;
       const nuevoBoton = {
-        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingMm: base.paddingMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
+        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
         contenido: { tipo: "texto", arriba: base.contenido.arriba, numero: n, abajo: base.contenido.abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);
