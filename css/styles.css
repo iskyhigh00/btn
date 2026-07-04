@@ -72,6 +72,12 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .boton-logo-wrap{width:82%;height:82%;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .boton-logo-wrap img{width:100%;height:100%;object-fit:contain;pointer-events:none}
 .marca-corte{position:absolute;background:#000;pointer-events:none}
+.marca-borde{position:absolute;background:#000;pointer-events:none}
+
+/* Los navegadores no imprimen fondos por defecto (ahorro de tinta): sin esto
+   las marcas de corte y los fondos de color de los botones desaparecen al
+   imprimir de verdad, aunque se vean bien en pantalla. */
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
 
 @media (max-width: 900px){
   .editor{grid-template-columns:1fr}

@@ -158,13 +158,16 @@ function _enlazarToolbar() {
 
 // ---------- Lienzo (hoja + botones + marcas de corte) ----------
 
+function _marcasHtml(botones) {
+  const deCorte = botones.flatMap(marcasDeCorteBoton).map((m) => `<div class="marca-corte" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`);
+  const deBorde = marcasDeBordeHoja(botones).map((m) => `<div class="marca-borde" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`);
+  return deCorte.join("") + deBorde.join("");
+}
+
 function _renderHoja() {
   const hojaEl = document.getElementById("hoja");
   const h = _hojaActual();
-  const marcas = h.botones.flatMap(marcasDeCorteBoton);
-  hojaEl.innerHTML =
-    marcas.map((m) => `<div class="marca-corte" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`).join("") +
-    h.botones.map((b) => `<div class="boton-print" data-id="${b.id}"></div>`).join("");
+  hojaEl.innerHTML = _marcasHtml(h.botones) + h.botones.map((b) => `<div class="boton-print" data-id="${b.id}"></div>`).join("");
   h.botones.forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
   _enlazarBotones();
 }
@@ -278,12 +281,8 @@ function _iniciarDrag(e, el) {
 function _renderMarcasCorte() {
   const hojaEl = document.getElementById("hoja");
   const h = _hojaActual();
-  hojaEl.querySelectorAll(".marca-corte").forEach((m) => m.remove());
-  const marcas = h.botones.flatMap(marcasDeCorteBoton);
-  const frag = marcas
-    .map((m) => `<div class="marca-corte" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`)
-    .join("");
-  hojaEl.insertAdjacentHTML("afterbegin", frag);
+  hojaEl.querySelectorAll(".marca-corte, .marca-borde").forEach((m) => m.remove());
+  hojaEl.insertAdjacentHTML("afterbegin", _marcasHtml(h.botones));
 }
 
 // Elimina botones sin pedir confirmación (para atajos como Supr) pero permite

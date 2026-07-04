@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.4.1";
+const APP_VERSION = "0.5.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -115,7 +115,6 @@ function empacarPosicion(botonesExistentes, w, h, gapMm) {
 // tipo "escuadra" en las 4 esquinas de un botón, para guiar la guillotina.
 function marcasDeCorteBoton(boton) {
   const { x, y, w, h } = boton;
-  const cx = x + w / 2, cy = y + h / 2;
   const esquinas = [
     { px: x, py: y, dx: -1, dy: -1 },
     { px: x + w, py: y, dx: 1, dy: -1 },
@@ -139,6 +138,31 @@ function marcasDeCorteBoton(boton) {
       h: CORTE_LARGO_MM,
     });
   }
+  return segmentos;
+}
+
+// Marcas en los 4 bordes físicos de la hoja (una por cada línea de corte
+// distinta que usan los botones), para alinear la guillotina directamente
+// contra el borde del papel en vez de tener que ubicarla a ojo en el medio
+// de la hoja.
+function marcasDeBordeHoja(botones) {
+  const ys = new Set();
+  const xs = new Set();
+  botones.forEach((b) => {
+    ys.add(Math.round(b.y * 100) / 100);
+    ys.add(Math.round((b.y + b.h) * 100) / 100);
+    xs.add(Math.round(b.x * 100) / 100);
+    xs.add(Math.round((b.x + b.w) * 100) / 100);
+  });
+  const segmentos = [];
+  ys.forEach((y) => {
+    segmentos.push({ x: 0, y: y - CORTE_GROSOR_MM / 2, w: CORTE_LARGO_MM, h: CORTE_GROSOR_MM });
+    segmentos.push({ x: HOJA_ANCHO_MM - CORTE_LARGO_MM, y: y - CORTE_GROSOR_MM / 2, w: CORTE_LARGO_MM, h: CORTE_GROSOR_MM });
+  });
+  xs.forEach((x) => {
+    segmentos.push({ x: x - CORTE_GROSOR_MM / 2, y: 0, w: CORTE_GROSOR_MM, h: CORTE_LARGO_MM });
+    segmentos.push({ x: x - CORTE_GROSOR_MM / 2, y: HOJA_ALTO_MM - CORTE_LARGO_MM, w: CORTE_GROSOR_MM, h: CORTE_LARGO_MM });
+  });
   return segmentos;
 }
 
