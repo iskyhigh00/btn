@@ -20,20 +20,26 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 
 /* ---------- Editor ---------- */
 .editor{display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start}
-.panel-lateral{max-height:calc(100vh - 90px);overflow:auto;position:sticky;top:16px}
+.panel-lateral{min-width:0}
 .panel-lateral h3{margin:0 0 10px}
+.panel-lateral h4{margin:10px 0 6px;font-size:13px;color:var(--muted)}
 .panel-header{display:flex;align-items:center;justify-content:space-between}
 .panel-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.campo{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
-.campo input, .campo select{background:#0d0f14;border:1px solid var(--line);border-radius:6px;color:var(--texto);padding:6px 8px;font-size:13px}
+.campo{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.campo input, .campo select{background:#0d0f14;border:1px solid var(--line);border-radius:6px;color:var(--texto);padding:6px 8px;font-size:13px;width:100%;min-width:0}
 .campo input[type="color"]{padding:2px;height:32px}
-.fila-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.tabs{display:flex;gap:6px;margin-bottom:6px}
-.tab-btn{flex:1;background:#0d0f14;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 4px;font-size:12px;cursor:pointer}
-.tab-btn.activo{color:var(--texto);border-color:var(--accent)}
+.fila-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+.separador{border:none;border-top:1px solid var(--line);margin:14px 0}
+.acciones-agregar{display:flex;flex-direction:column;gap:8px}
+.conteo{font-size:12px;margin-top:-4px}
+.fila-plantilla{display:flex;gap:6px;align-items:center}
+.fila-plantilla select{flex:1;background:#0d0f14;border:1px solid var(--line);color:var(--texto);border-radius:6px;padding:6px 8px;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#0d0f14;border:1px solid var(--line);border-radius:14px;padding:3px 6px 3px 10px;font-size:12px}
+.chip-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;line-height:1}
+.chip-x:hover{color:var(--texto)}
 .logos-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .logo-thumb{width:44px;height:44px;object-fit:contain;background:#fff;border-radius:6px;border:2px solid var(--line);cursor:pointer}
-.logo-thumb.elegido{border-color:var(--accent)}
 
 .lienzo-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .lienzo-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -68,7 +74,6 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 
 @media (max-width: 900px){
   .editor{grid-template-columns:1fr}
-  .panel-lateral{position:static;max-height:none}
 }
 
 /* ---------- Impresión ---------- */

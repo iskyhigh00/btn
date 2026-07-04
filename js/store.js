@@ -5,11 +5,16 @@
 const Store = (function () {
   const KEY = "botonera_estado";
 
+  function _ultimoUsadoDefault() {
+    return { arriba: "", abajo: "", forma: "cuadrado", w: 40, h: 40, radioMm: 3, fondo: "#ffffff", color: "#000000" };
+  }
+
   function _defaults() {
     const hojaId = uid();
     return {
-      config: { margenMm: 1.2 },
+      config: { margenMm: 1.2, ultimoUsado: _ultimoUsadoDefault() },
       logos: {}, // { [logoId]: dataURL }
+      plantillas: [], // { id, nombre, w, h, forma, radioMm } - tamaños con nombre (ej: "MK6", "BB1")
       hojaActualId: hojaId,
       hojas: [{ id: hojaId, nombre: "Hoja 1", botones: [] }],
     };
@@ -18,7 +23,12 @@ const Store = (function () {
   function _leer() {
     try {
       const raw = localStorage.getItem(KEY);
-      return raw ? JSON.parse(raw) : _defaults();
+      const estado = raw ? JSON.parse(raw) : _defaults();
+      // Completa config/ultimoUsado/plantillas si viene de una versión anterior sin esos campos.
+      estado.config = { ..._defaults().config, ...estado.config };
+      estado.config.ultimoUsado = { ..._ultimoUsadoDefault(), ...estado.config.ultimoUsado };
+      estado.plantillas = estado.plantillas || [];
+      return estado;
     } catch (e) {
       return _defaults();
     }
@@ -113,6 +123,7 @@ const Store = (function () {
     if (!b) return _estado;
     const copia = JSON.parse(JSON.stringify(b));
     copia.id = uid();
+    delete copia.grupoId; // se independiza del grupo original
     const pos = empacarPosicion(h.botones, copia.w, copia.h);
     copia.x = pos.x;
     copia.y = pos.y;
@@ -120,9 +131,34 @@ const Store = (function () {
     return _guardar(_estado);
   }
 
+  // Plantillas de tamaño con nombre (ej: "MK6", "BB1"): mismo formato de
+  // botón reutilizable entre distintas máquinas/juegos.
+  function guardarPlantilla(nombre, datos) {
+    const nombreLimpio = String(nombre ?? "").trim();
+    if (!nombreLimpio) return _estado;
+    const existente = _estado.plantillas.find((p) => p.nombre.toLowerCase() === nombreLimpio.toLowerCase());
+    if (existente) Object.assign(existente, datos, { nombre: nombreLimpio });
+    else _estado.plantillas.push({ id: uid(), nombre: nombreLimpio, ...datos });
+    return _guardar(_estado);
+  }
+
+  function eliminarPlantilla(id) {
+    _estado.plantillas = _estado.plantillas.filter((p) => p.id !== id);
+    return _guardar(_estado);
+  }
+
   // Persiste el estado actual tal cual está (para cuando el código de la vista
   // ya mutó un objeto de _estado directamente, por ejemplo durante un drag).
   function guardar() {
+    return _guardar(_estado);
+  }
+
+  // Recuerda los últimos valores usados al crear/editar un botón, para
+  // precargarlos la próxima vez y no tener que reescribirlos.
+  function actualizarUltimoUsado(cambios) {
+    Object.entries(cambios).forEach(([k, v]) => {
+      if (v !== undefined) _estado.config.ultimoUsado[k] = v;
+    });
     return _guardar(_estado);
   }
 
@@ -174,10 +210,11 @@ const Store = (function () {
   }
 
   return {
-    init, hojaActual, setHojaActual, guardar,
+    init, hojaActual, setHojaActual, guardar, actualizarUltimoUsado,
     crearHoja, renombrarHoja, eliminarHoja, duplicarHoja,
     agregarBoton, actualizarBoton, eliminarBoton, duplicarBoton,
     agregarLogo, eliminarLogosNoUsados,
+    guardarPlantilla, eliminarPlantilla,
     exportarJSON, importarJSON,
   };
 })();

@@ -155,8 +155,10 @@ function _contenidoHTML(b) {
       <img src="${src}" style="transform: translate(${c.offsetX || 0}%, ${c.offsetY || 0}%) scale(${c.zoom || 1})">
     </div>`;
   }
-  const arriba = c.numero != null && c.numero !== "" ? pluralizar(c.numero, c.arribaSingular, c.arribaPlural) : c.arribaSingular;
-  const abajo = c.numero != null && c.numero !== "" ? pluralizar(c.numero, c.abajoSingular, c.abajoPlural) : c.abajoSingular;
+  // Arriba suele ser una orden ("JUEGUE") que no se pluraliza; solo el texto
+  // de abajo (el sustantivo contable, "CRÉDITO/S") cambia según el número.
+  const arriba = c.arriba || "";
+  const abajo = pluralizar(c.numero, c.abajo);
   const fsArriba = (b.h * 0.16).toFixed(2);
   const fsNumero = (b.h * 0.4).toFixed(2);
   const fsAbajo = (b.h * 0.16).toFixed(2);
@@ -233,14 +235,27 @@ function _renderMarcasCorte() {
   hojaEl.insertAdjacentHTML("afterbegin", frag);
 }
 
-// ---------- Panel lateral (agregar / editar) ----------
+// ---------- Panel lateral (agregar / editar botón / editar grupo) ----------
 
 function _renderPanel() {
   const panel = document.getElementById("panel");
   const b = _botonSeleccionado();
-  panel.innerHTML = b ? _formEditar(b) : _formAgregar();
-  if (b) _enlazarFormEditar(b);
-  else _enlazarFormAgregar();
+  if (b && b.grupoId) {
+    panel.innerHTML = _formEditarGrupo(b.grupoId);
+    _enlazarFormEditarGrupo(b.grupoId);
+  } else if (b) {
+    panel.innerHTML = _formEditar(b);
+    _enlazarFormEditar(b);
+  } else {
+    panel.innerHTML = _formAgregar();
+    _enlazarFormAgregar();
+  }
+}
+
+function _miembrosGrupo(grupoId) {
+  return _hojaActual()
+    .botones.filter((b) => b.grupoId === grupoId)
+    .sort((a, b) => (a.contenido.numero ?? 0) - (b.contenido.numero ?? 0));
 }
 
 const FORMAS = [
@@ -259,63 +274,30 @@ function _campoRadio(valor) {
     <input type="number" id="c-radio" min="0" step="0.5" value="${valor ?? 3}"></label>`;
 }
 
-function _formAgregar() {
+// d = valores por defecto a precargar: { w, h, forma, radioMm }
+function _bloqueFormaTamano(pfx, d) {
+  d = d || {};
   return `
-    <h3>Agregar botón</h3>
-    <div class="tabs">
-      <button class="tab-btn activo" data-tab="texto">Texto</button>
-      <button class="tab-btn" data-tab="lista">Lista de números</button>
-      <button class="tab-btn" data-tab="logo">Imagen / logo</button>
+    <div class="fila-2">
+      <label class="campo">Ancho (mm)<input id="${pfx}-w" type="number" min="5" step="0.5" value="${d.w ?? 40}"></label>
+      <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="${d.h ?? 40}"></label>
     </div>
-
-    <form id="f-texto" class="panel-form">
-      <label class="campo">Texto arriba (singular)<input id="t-arriba-s" placeholder="JUEGUE"></label>
-      <label class="campo">Texto arriba (plural, opcional)<input id="t-arriba-p" placeholder=""></label>
-      <label class="campo">Número grande (opcional)<input id="t-numero" type="number"></label>
-      <label class="campo">Texto abajo (singular)<input id="t-abajo-s" placeholder="CRÉDITO"></label>
-      <label class="campo">Texto abajo (plural, opcional)<input id="t-abajo-p" placeholder="CRÉDITOS"></label>
-      ${_bloqueFormaTamano("t")}
-      ${_bloqueColores("t")}
-      <button class="btn" type="submit">+ Agregar botón</button>
-    </form>
-
-    <form id="f-lista" class="panel-form" style="display:none">
-      <label class="campo">Lista de números (separados por coma)<input id="l-lista" placeholder="1, 2, 3, 5, 10"></label>
-      <label class="campo">Texto arriba (singular)<input id="l-arriba-s" placeholder="JUEGUE"></label>
-      <label class="campo">Texto arriba (plural, opcional)<input id="l-arriba-p"></label>
-      <label class="campo">Texto abajo (singular)<input id="l-abajo-s" placeholder="LÍNEA"></label>
-      <label class="campo">Texto abajo (plural, opcional)<input id="l-abajo-p" placeholder="LÍNEAS"></label>
-      ${_bloqueFormaTamano("l")}
-      ${_bloqueColores("l")}
-      <button class="btn" type="submit">+ Generar botones</button>
-    </form>
-
-    <form id="f-logo" class="panel-form" style="display:none">
-      <label class="campo">Imagen<input id="g-file" type="file" accept="image/*"></label>
-      <div class="logos-existentes" id="g-existentes"></div>
-      ${_bloqueFormaTamano("g")}
-      <label class="campo">Color de fondo<input id="g-fondo" type="color" value="#ffffff"></label>
-      <button class="btn" type="submit" id="g-submit" disabled>+ Agregar botón</button>
-    </form>
+    <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
+    <div id="${pfx}-radio-wrap" style="display:${(d.forma ?? "cuadrado") === "redondeado" ? "" : "none"}">${_campoRadio(d.radioMm)}</div>
+    <div class="fila-plantilla">
+      <select id="${pfx}-plantilla"></select>
+      <button type="button" class="btn sm" id="${pfx}-plantilla-guardar">Guardar plantilla</button>
+    </div>
   `;
 }
 
-function _bloqueFormaTamano(pfx) {
+// d = valores por defecto: { fondo, color }
+function _bloqueColores(pfx, d) {
+  d = d || {};
   return `
     <div class="fila-2">
-      <label class="campo">Ancho (mm)<input id="${pfx}-w" type="number" min="5" step="0.5" value="40"></label>
-      <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="40"></label>
-    </div>
-    <label class="campo">Forma ${_selectForma(pfx + "-forma", "cuadrado")}</label>
-    <div id="${pfx}-radio-wrap" style="display:none">${_campoRadio(3)}</div>
-  `;
-}
-
-function _bloqueColores(pfx) {
-  return `
-    <div class="fila-2">
-      <label class="campo">Fondo<input id="${pfx}-fondo" type="color" value="#ffffff"></label>
-      <label class="campo">Texto<input id="${pfx}-color" type="color" value="#000000"></label>
+      <label class="campo">Fondo<input id="${pfx}-fondo" type="color" value="${d.fondo ?? "#ffffff"}"></label>
+      <label class="campo">Texto<input id="${pfx}-color" type="color" value="${d.color ?? "#000000"}"></label>
     </div>`;
 }
 
@@ -327,136 +309,178 @@ function _enlazarRadioToggle(pfx) {
   actualizar();
 }
 
-let _logoIdPendiente = null;
+// Plantillas de tamaño con nombre (ej: "MK6", "BB1"): mismo formato de botón
+// reutilizable entre distintas máquinas/juegos, sin tener que reescribir mm.
+function _enlazarPlantillas(pfx) {
+  const sel = document.getElementById(`${pfx}-plantilla`);
+  const btnGuardar = document.getElementById(`${pfx}-plantilla-guardar`);
+  if (!sel) return;
+
+  const pintarOpciones = () => {
+    sel.innerHTML =
+      `<option value="">Plantilla de tamaño…</option>` +
+      S.plantillas.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+  };
+  pintarOpciones();
+
+  sel.onchange = () => {
+    const p = S.plantillas.find((x) => x.id === sel.value);
+    if (!p) return;
+    const campoW = document.getElementById(`${pfx}-w`);
+    const campoH = document.getElementById(`${pfx}-h`);
+    const campoForma = document.getElementById(`${pfx}-forma`);
+    const campoRadio = document.getElementById("c-radio");
+    campoW.value = p.w;
+    campoH.value = p.h;
+    campoForma.value = p.forma;
+    if (campoRadio) campoRadio.value = p.radioMm || 0;
+    // Dispara los eventos para que los listeners ya enganchados (vivos o no) reaccionen.
+    [campoW, campoH].forEach((c) => { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); });
+    campoForma.dispatchEvent(new Event("change"));
+    if (campoRadio) { campoRadio.dispatchEvent(new Event("input")); campoRadio.dispatchEvent(new Event("change")); }
+    sel.value = "";
+  };
+
+  if (btnGuardar) {
+    btnGuardar.onclick = () => {
+      const nombre = prompt('Nombre para esta plantilla de tamaño (ej: "MK6", "BB1"):');
+      if (!nombre) return;
+      const datos = {
+        w: Number(document.getElementById(`${pfx}-w`).value),
+        h: Number(document.getElementById(`${pfx}-h`).value),
+        forma: document.getElementById(`${pfx}-forma`).value,
+        radioMm: Number(document.getElementById("c-radio")?.value) || 0,
+      };
+      S = Store.guardarPlantilla(nombre, datos);
+      pintarOpciones();
+      toast(`Plantilla "${nombre}" guardada.`);
+    };
+  }
+}
+
+function _crearYSeleccionar(boton) {
+  const pos = empacarPosicion(_hojaActual().botones, boton.w, boton.h);
+  boton.x = pos.x;
+  boton.y = pos.y;
+  S = Store.agregarBoton(_hojaActual().id, boton);
+  _seleccionId = boton.id;
+  _renderHoja();
+  _renderPanel();
+}
+
+function _formAgregar() {
+  const u = S.config.ultimoUsado;
+  return `
+    <h3>Agregar botón</h3>
+    <div class="acciones-agregar">
+      <button class="btn" id="btn-nuevo-texto">+ Botón de texto</button>
+      <button class="btn" id="btn-nuevo-logo">+ Botón con imagen</button>
+      <input type="file" id="input-nuevo-logo" accept="image/*" style="display:none">
+    </div>
+    <div id="logos-existentes-agregar"></div>
+
+    <hr class="separador">
+    <h4>Generar por lista de números</h4>
+    <form id="f-lista" class="panel-form">
+      <label class="campo">Lista de números (separados por coma)<input id="l-lista" placeholder="1, 2, 3, 5, 10"></label>
+      <div class="muted conteo" id="l-conteo">0 botones</div>
+      <label class="campo">Texto arriba<input id="l-arriba" placeholder="JUEGUE" value="${esc(u.arriba)}"></label>
+      <label class="campo">Texto abajo<input id="l-abajo" placeholder="LÍNEA" value="${esc(u.abajo)}"></label>
+      ${_bloqueFormaTamano("l", u)}
+      ${_bloqueColores("l", u)}
+      <button class="btn" type="submit">+ Generar botones</button>
+    </form>
+  `;
+}
 
 function _enlazarFormAgregar() {
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("activo"));
-      btn.classList.add("activo");
-      ["texto", "lista", "logo"].forEach((t) => {
-        document.getElementById(`f-${t}`).style.display = t === btn.dataset.tab ? "" : "none";
+  const u = S.config.ultimoUsado;
+
+  document.getElementById("btn-nuevo-texto").onclick = () => {
+    _crearYSeleccionar({
+      id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
+      contenido: { tipo: "texto", arriba: u.arriba, numero: null, abajo: u.abajo },
+    });
+  };
+
+  document.getElementById("btn-nuevo-logo").onclick = () => document.getElementById("input-nuevo-logo").click();
+  document.getElementById("input-nuevo-logo").onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const logoId = Store.agregarLogo(reader.result);
+      _crearYSeleccionar({
+        id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        contenido: { tipo: "logo", logoId, zoom: 1, offsetX: 0, offsetY: 0 },
       });
     };
-  });
-
-  _enlazarRadioToggle("t");
-  _enlazarRadioToggle("l");
-  _enlazarRadioToggle("g");
-
-  document.getElementById("f-texto").onsubmit = (e) => {
-    e.preventDefault();
-    const w = Number(document.getElementById("t-w").value);
-    const h = Number(document.getElementById("t-h").value);
-    const boton = {
-      id: uid(),
-      forma: document.getElementById("t-forma").value,
-      radioMm: Number(document.getElementById("c-radio")?.value) || 3,
-      w, h,
-      fondo: document.getElementById("t-fondo").value,
-      color: document.getElementById("t-color").value,
-      contenido: {
-        tipo: "texto",
-        arribaSingular: document.getElementById("t-arriba-s").value,
-        arribaPlural: document.getElementById("t-arriba-p").value,
-        numero: document.getElementById("t-numero").value === "" ? null : Number(document.getElementById("t-numero").value),
-        abajoSingular: document.getElementById("t-abajo-s").value,
-        abajoPlural: document.getElementById("t-abajo-p").value,
-      },
-    };
-    const pos = empacarPosicion(_hojaActual().botones, w, h);
-    boton.x = pos.x;
-    boton.y = pos.y;
-    S = Store.agregarBoton(_hojaActual().id, boton);
-    _renderHoja();
-    toast("Botón agregado.");
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
+
+  _renderLogosExistentesAgregar();
+  _enlazarRadioToggle("l");
+  _enlazarPlantillas("l");
+
+  const listaInput = document.getElementById("l-lista");
+  const conteo = document.getElementById("l-conteo");
+  const textoConteo = (n) => (n === 1 ? "1 botón" : `${n} botones`);
+  const actualizarConteo = () => (conteo.textContent = textoConteo(parseListaNumeros(listaInput.value).length));
+  listaInput.oninput = actualizarConteo;
+  actualizarConteo();
 
   document.getElementById("f-lista").onsubmit = (e) => {
     e.preventDefault();
-    const numeros = parseListaNumeros(document.getElementById("l-lista").value);
+    const numeros = parseListaNumeros(listaInput.value);
     if (!numeros.length) return toast("Ingresá al menos un número (ej: 1, 2, 3).");
     const w = Number(document.getElementById("l-w").value);
     const h = Number(document.getElementById("l-h").value);
-    const base = {
-      forma: document.getElementById("l-forma").value,
-      radioMm: Number(document.getElementById("c-radio")?.value) || 3,
-      w, h,
-      fondo: document.getElementById("l-fondo").value,
-      color: document.getElementById("l-color").value,
-    };
-    const arribaS = document.getElementById("l-arriba-s").value;
-    const arribaP = document.getElementById("l-arriba-p").value;
-    const abajoS = document.getElementById("l-abajo-s").value;
-    const abajoP = document.getElementById("l-abajo-p").value;
+    const forma = document.getElementById("l-forma").value;
+    const radioMm = Number(document.getElementById("c-radio")?.value) || 3;
+    const fondo = document.getElementById("l-fondo").value;
+    const color = document.getElementById("l-color").value;
+    const arriba = document.getElementById("l-arriba").value;
+    const abajo = document.getElementById("l-abajo").value;
+    const grupoId = uid();
+    let primero = null;
     numeros.forEach((n) => {
       const boton = {
-        id: uid(), ...base,
-        contenido: { tipo: "texto", arribaSingular: arribaS, arribaPlural: arribaP, numero: n, abajoSingular: abajoS, abajoPlural: abajoP },
+        id: uid(), forma, radioMm, w, h, fondo, color, grupoId,
+        contenido: { tipo: "texto", arriba, numero: n, abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
       boton.x = pos.x;
       boton.y = pos.y;
       S = Store.agregarBoton(_hojaActual().id, boton);
+      if (!primero) primero = boton.id;
     });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, fondo, color });
+    _seleccionId = primero;
     _renderHoja();
-    toast(`${numeros.length} botones generados.`);
-  };
-
-  _renderLogosExistentes();
-
-  document.getElementById("g-file").onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      _logoIdPendiente = Store.agregarLogo(reader.result);
-      document.getElementById("g-submit").disabled = false;
-      _renderLogosExistentes();
-      toast("Imagen cargada.");
-    };
-    reader.readAsDataURL(file);
-  };
-
-  document.getElementById("f-logo").onsubmit = (e) => {
-    e.preventDefault();
-    if (!_logoIdPendiente) return toast("Subí o elegí una imagen primero.");
-    const w = Number(document.getElementById("g-w").value);
-    const h = Number(document.getElementById("g-h").value);
-    const boton = {
-      id: uid(),
-      forma: document.getElementById("g-forma").value,
-      radioMm: Number(document.getElementById("c-radio")?.value) || 3,
-      w, h,
-      fondo: document.getElementById("g-fondo").value,
-      color: "#000000",
-      contenido: { tipo: "logo", logoId: _logoIdPendiente, zoom: 1, offsetX: 0, offsetY: 0 },
-    };
-    const pos = empacarPosicion(_hojaActual().botones, w, h);
-    boton.x = pos.x;
-    boton.y = pos.y;
-    S = Store.agregarBoton(_hojaActual().id, boton);
-    _renderHoja();
-    toast("Botón agregado.");
+    _renderPanel();
+    toast(`${textoConteo(numeros.length)} generados.`);
   };
 }
 
-function _renderLogosExistentes() {
-  const cont = document.getElementById("g-existentes");
+function _renderLogosExistentesAgregar() {
+  const cont = document.getElementById("logos-existentes-agregar");
   const ids = Object.keys(S.logos);
   if (!ids.length) { cont.innerHTML = ""; return; }
-  cont.innerHTML = `<div class="muted" style="margin:6px 0 4px">o reusar una ya subida:</div>
+  const u = S.config.ultimoUsado;
+  cont.innerHTML = `<div class="muted" style="margin:6px 0 4px;font-size:12px">o reusar una imagen ya subida:</div>
     <div class="logos-grid">${ids.map((id) => `<img src="${S.logos[id]}" data-logo-id="${id}" class="logo-thumb">`).join("")}</div>`;
   cont.querySelectorAll(".logo-thumb").forEach((img) => {
     img.onclick = () => {
-      _logoIdPendiente = img.dataset.logoId;
-      cont.querySelectorAll(".logo-thumb").forEach((x) => x.classList.toggle("elegido", x === img));
-      document.getElementById("g-submit").disabled = false;
+      _crearYSeleccionar({
+        id: uid(), forma: u.forma, radioMm: u.radioMm, w: u.w, h: u.h, fondo: u.fondo, color: "#000000",
+        contenido: { tipo: "logo", logoId: img.dataset.logoId, zoom: 1, offsetX: 0, offsetY: 0 },
+      });
     };
   });
 }
 
-// ---------- Editar botón seleccionado ----------
+// ---------- Editar un botón individual (sin grupo) ----------
 
 function _formEditar(b) {
   const c = b.contenido;
@@ -467,16 +491,8 @@ function _formEditar(b) {
       <button class="btn sm sec" id="e-cerrar">✕ Cerrar</button>
     </div>
     <div class="panel-form">
-      <div class="fila-2">
-        <label class="campo">Ancho (mm)<input id="e-w" type="number" min="5" step="0.5" value="${b.w}"></label>
-        <label class="campo">Alto (mm)<input id="e-h" type="number" min="5" step="0.5" value="${b.h}"></label>
-      </div>
-      <label class="campo">Forma ${_selectForma("e-forma", b.forma)}</label>
-      <div id="e-radio-wrap" style="display:${b.forma === "redondeado" ? "" : "none"}">${_campoRadio(b.radioMm)}</div>
-      <div class="fila-2">
-        <label class="campo">Fondo<input id="e-fondo" type="color" value="${b.fondo}"></label>
-        <label class="campo">Texto<input id="e-color" type="color" value="${b.color}" ${esLogo ? "disabled" : ""}></label>
-      </div>
+      ${_bloqueFormaTamano("e", b)}
+      ${_bloqueColores("e", b)}
       ${esLogo ? _bloqueEdicionLogo(c) : _bloqueEdicionTexto(c)}
       <div class="fila-2">
         <button class="btn" id="e-duplicar">Duplicar</button>
@@ -487,11 +503,9 @@ function _formEditar(b) {
 
 function _bloqueEdicionTexto(c) {
   return `
-    <label class="campo">Texto arriba (singular)<input id="e-arriba-s" value="${esc(c.arribaSingular || "")}"></label>
-    <label class="campo">Texto arriba (plural)<input id="e-arriba-p" value="${esc(c.arribaPlural || "")}"></label>
-    <label class="campo">Número grande<input id="e-numero" type="number" value="${c.numero ?? ""}"></label>
-    <label class="campo">Texto abajo (singular)<input id="e-abajo-s" value="${esc(c.abajoSingular || "")}"></label>
-    <label class="campo">Texto abajo (plural)<input id="e-abajo-p" value="${esc(c.abajoPlural || "")}"></label>
+    <label class="campo">Texto arriba<input id="e-arriba" value="${esc(c.arriba || "")}"></label>
+    <label class="campo">Número grande (opcional)<input id="e-numero" type="number" value="${c.numero ?? ""}"></label>
+    <label class="campo">Texto abajo<input id="e-abajo" value="${esc(c.abajo || "")}"></label>
   `;
 }
 
@@ -527,7 +541,15 @@ function _enlazarFormEditar(b) {
   };
 
   const refrescar = () => { _pintarBoton(el(), b); _renderMarcasCorte(); };
-  const persistir = () => Store.guardar();
+  const persistir = () => {
+    Store.guardar();
+    Store.actualizarUltimoUsado({
+      forma: b.forma, radioMm: b.radioMm, w: b.w, h: b.h, fondo: b.fondo,
+      color: b.contenido.tipo === "texto" ? b.color : undefined,
+      arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
+      abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
+    });
+  };
 
   document.getElementById("e-w").oninput = (e) => { b.w = Number(e.target.value) || b.w; refrescar(); };
   document.getElementById("e-w").onchange = persistir;
@@ -551,6 +573,8 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-color").oninput = (e) => { b.color = e.target.value; refrescar(); };
   document.getElementById("e-color").onchange = persistir;
 
+  _enlazarPlantillas("e");
+
   if (b.contenido.tipo === "logo") {
     document.getElementById("e-zoom").oninput = (e) => { b.contenido.zoom = Number(e.target.value); refrescar(); };
     document.getElementById("e-zoom").onchange = persistir;
@@ -570,21 +594,136 @@ function _enlazarFormEditar(b) {
       reader.readAsDataURL(file);
     };
   } else {
-    ["arriba-s", "arriba-p", "abajo-s", "abajo-p"].forEach((campo) => {
-      const input = document.getElementById(`e-${campo}`);
-      input.oninput = (e) => {
-        if (campo === "arriba-s") b.contenido.arribaSingular = e.target.value;
-        if (campo === "arriba-p") b.contenido.arribaPlural = e.target.value;
-        if (campo === "abajo-s") b.contenido.abajoSingular = e.target.value;
-        if (campo === "abajo-p") b.contenido.abajoPlural = e.target.value;
-        refrescar();
-      };
-      input.onchange = persistir;
-    });
+    document.getElementById("e-arriba").oninput = (e) => { b.contenido.arriba = e.target.value; refrescar(); };
+    document.getElementById("e-arriba").onchange = persistir;
+    document.getElementById("e-abajo").oninput = (e) => { b.contenido.abajo = e.target.value; refrescar(); };
+    document.getElementById("e-abajo").onchange = persistir;
     document.getElementById("e-numero").oninput = (e) => {
       b.contenido.numero = e.target.value === "" ? null : Number(e.target.value);
       refrescar();
     };
     document.getElementById("e-numero").onchange = persistir;
   }
+}
+
+// ---------- Editar un grupo (botones generados por lista de números) ----------
+
+function _formEditarGrupo(grupoId) {
+  const miembros = _miembrosGrupo(grupoId);
+  const base = miembros[0];
+  const n = miembros.length;
+  const numeros = miembros.map((m) => m.contenido.numero).join(", ");
+  return `
+    <div class="panel-header">
+      <h3>Grupo de ${n === 1 ? "1 botón" : n + " botones"}</h3>
+      <button class="btn sm sec" id="e-cerrar">✕ Cerrar</button>
+    </div>
+    <div class="panel-form">
+      <label class="campo">Números (separados por coma)<input id="gr-numeros" value="${esc(numeros)}"></label>
+      <label class="campo">Texto arriba<input id="gr-arriba" value="${esc(base.contenido.arriba || "")}"></label>
+      <label class="campo">Texto abajo<input id="gr-abajo" value="${esc(base.contenido.abajo || "")}"></label>
+      ${_bloqueFormaTamano("gr", base)}
+      ${_bloqueColores("gr", base)}
+      <div class="chips">
+        ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
+      </div>
+      <button class="btn sec" id="gr-eliminar">Eliminar grupo completo</button>
+    </div>`;
+}
+
+function _enlazarFormEditarGrupo(grupoId) {
+  const hojaId = _hojaActual().id;
+  const miembros = () => _miembrosGrupo(grupoId);
+
+  document.getElementById("e-cerrar").onclick = () => {
+    _seleccionId = null;
+    document.querySelectorAll(".boton-print").forEach((x) => x.classList.remove("seleccionado"));
+    _renderPanel();
+  };
+
+  const refrescarTodos = () => {
+    miembros().forEach((m) => _pintarBoton(document.querySelector(`.boton-print[data-id="${m.id}"]`), m));
+    _renderMarcasCorte();
+  };
+  const persistir = () => {
+    Store.guardar();
+    const base = miembros()[0];
+    if (base) {
+      Store.actualizarUltimoUsado({
+        forma: base.forma, radioMm: base.radioMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
+        arriba: base.contenido.arriba, abajo: base.contenido.abajo,
+      });
+    }
+  };
+
+  document.getElementById("gr-arriba").oninput = (e) => { miembros().forEach((m) => (m.contenido.arriba = e.target.value)); refrescarTodos(); };
+  document.getElementById("gr-arriba").onchange = persistir;
+  document.getElementById("gr-abajo").oninput = (e) => { miembros().forEach((m) => (m.contenido.abajo = e.target.value)); refrescarTodos(); };
+  document.getElementById("gr-abajo").onchange = persistir;
+
+  document.getElementById("gr-w").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.w = v)); refrescarTodos(); };
+  document.getElementById("gr-w").onchange = persistir;
+  document.getElementById("gr-h").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.h = v)); refrescarTodos(); };
+  document.getElementById("gr-h").onchange = persistir;
+
+  document.getElementById("gr-forma").onchange = (e) => {
+    miembros().forEach((m) => (m.forma = e.target.value));
+    document.getElementById("gr-radio-wrap").style.display = e.target.value === "redondeado" ? "" : "none";
+    refrescarTodos();
+    persistir();
+  };
+  const radio = document.getElementById("c-radio");
+  if (radio) {
+    radio.oninput = (e) => { const v = Number(e.target.value) || 0; miembros().forEach((m) => (m.radioMm = v)); refrescarTodos(); };
+    radio.onchange = persistir;
+  }
+
+  document.getElementById("gr-fondo").oninput = (e) => { miembros().forEach((m) => (m.fondo = e.target.value)); refrescarTodos(); };
+  document.getElementById("gr-fondo").onchange = persistir;
+  document.getElementById("gr-color").oninput = (e) => { miembros().forEach((m) => (m.color = e.target.value)); refrescarTodos(); };
+  document.getElementById("gr-color").onchange = persistir;
+
+  _enlazarPlantillas("gr");
+
+  document.getElementById("gr-numeros").onchange = (e) => {
+    const nuevos = parseListaNumeros(e.target.value);
+    if (!nuevos.length) return toast("Ingresá al menos un número.");
+    const actuales = miembros();
+    const actualesNums = actuales.map((m) => m.contenido.numero);
+    const base = actuales[0];
+    actuales.forEach((m) => { if (!nuevos.includes(m.contenido.numero)) S = Store.eliminarBoton(hojaId, m.id); });
+    nuevos.forEach((n) => {
+      if (actualesNums.includes(n)) return;
+      const nuevoBoton = {
+        id: uid(), forma: base.forma, radioMm: base.radioMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
+        contenido: { tipo: "texto", arriba: base.contenido.arriba, numero: n, abajo: base.contenido.abajo },
+      };
+      const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);
+      nuevoBoton.x = pos.x;
+      nuevoBoton.y = pos.y;
+      S = Store.agregarBoton(hojaId, nuevoBoton);
+    });
+    _seleccionId = miembros()[0]?.id || null;
+    _renderHoja();
+    _renderPanel();
+    toast("Grupo actualizado.");
+  };
+
+  document.getElementById("gr-eliminar").onclick = () => {
+    const cant = miembros().length;
+    if (!confirm(`¿Eliminar los ${cant} botones de este grupo?`)) return;
+    miembros().forEach((m) => { S = Store.eliminarBoton(hojaId, m.id); });
+    _seleccionId = null;
+    _renderHoja();
+    _renderPanel();
+  };
+
+  document.querySelectorAll(".chip-x").forEach((btn) => {
+    btn.onclick = () => {
+      S = Store.eliminarBoton(hojaId, btn.dataset.id);
+      if (_seleccionId === btn.dataset.id) _seleccionId = miembros()[0]?.id || null;
+      _renderHoja();
+      _renderPanel();
+    };
+  });
 }

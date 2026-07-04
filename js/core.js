@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.3.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -30,10 +30,23 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Elige singular o plural según el número (1 -> singular, cualquier otro valor -> plural).
-function pluralizar(numero, singular, plural) {
-  // Si no cargaron un plural distinto, se repite el singular para cualquier número.
-  return Math.abs(Number(numero)) === 1 ? (singular || "") : (plural || singular || "");
+// Pluraliza automáticamente una palabra en español (heurística simple, cubre
+// los casos comunes: vocal->+S, "Z"->"CES", consonante->+ES).
+function autoPluralizar(palabra) {
+  const p = String(palabra ?? "");
+  if (!p.trim()) return p;
+  const ultima = p.slice(-1).toLowerCase();
+  if ("aeiouáéíóú".includes(ultima)) return p + "S";
+  if (ultima === "z") return p.slice(0, -1) + "ces";
+  return p + "ES";
+}
+
+// Según el número (1 -> singular tal cual, cualquier otro valor -> plural
+// automático), o el texto sin cambios si no hay número. El plural nunca se
+// pide al usuario: se calcula solo.
+function pluralizar(numero, texto) {
+  if (numero == null || numero === "") return texto || "";
+  return Math.abs(Number(numero)) === 1 ? (texto || "") : autoPluralizar(texto);
 }
 
 // border-radius efectivo según la forma del botón.
