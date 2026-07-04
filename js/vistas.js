@@ -726,10 +726,12 @@ function _bloqueEdicionTexto(c) {
 }
 
 function _bloqueEdicionLogo(c) {
+  const zoom = c.zoom ?? 1, offX = c.offsetX ?? 0, offY = c.offsetY ?? 0;
   return `
-    <label class="campo">Zoom<input id="e-zoom" type="range" min="0.3" max="4" step="0.05" value="${c.zoom ?? 1}"></label>
-    <label class="campo">Desplazar horizontal<input id="e-offx" type="range" min="-50" max="50" step="1" value="${c.offsetX ?? 0}"></label>
-    <label class="campo">Desplazar vertical<input id="e-offy" type="range" min="-50" max="50" step="1" value="${c.offsetY ?? 0}"></label>
+    <label class="campo">Zoom <span id="e-zoom-val" class="valor-slider">${zoom.toFixed(2)}x</span><input id="e-zoom" type="range" min="0.3" max="4" step="0.05" value="${zoom}"></label>
+    <label class="campo">Desplazar horizontal <span id="e-offx-val" class="valor-slider">${offX}%</span><input id="e-offx" type="range" min="-50" max="50" step="1" value="${offX}"></label>
+    <label class="campo">Desplazar vertical <span id="e-offy-val" class="valor-slider">${offY}%</span><input id="e-offy" type="range" min="-50" max="50" step="1" value="${offY}"></label>
+    <button type="button" class="btn sm" id="e-centrar">Centrar (zoom 1x, sin desplazar)</button>
     <label class="campo">Cambiar imagen<input id="e-file" type="file" accept="image/*"></label>
   `;
 }
@@ -796,12 +798,37 @@ function _enlazarFormEditar(b) {
   _enlazarPlantillas("e");
 
   if (b.contenido.tipo === "logo") {
-    document.getElementById("e-zoom").oninput = (e) => { b.contenido.zoom = Number(e.target.value); refrescar(); };
+    document.getElementById("e-zoom").oninput = (e) => {
+      b.contenido.zoom = Number(e.target.value);
+      document.getElementById("e-zoom-val").textContent = `${b.contenido.zoom.toFixed(2)}x`;
+      refrescar();
+    };
     document.getElementById("e-zoom").onchange = persistir;
-    document.getElementById("e-offx").oninput = (e) => { b.contenido.offsetX = Number(e.target.value); refrescar(); };
+    document.getElementById("e-offx").oninput = (e) => {
+      b.contenido.offsetX = Number(e.target.value);
+      document.getElementById("e-offx-val").textContent = `${b.contenido.offsetX}%`;
+      refrescar();
+    };
     document.getElementById("e-offx").onchange = persistir;
-    document.getElementById("e-offy").oninput = (e) => { b.contenido.offsetY = Number(e.target.value); refrescar(); };
+    document.getElementById("e-offy").oninput = (e) => {
+      b.contenido.offsetY = Number(e.target.value);
+      document.getElementById("e-offy-val").textContent = `${b.contenido.offsetY}%`;
+      refrescar();
+    };
     document.getElementById("e-offy").onchange = persistir;
+    document.getElementById("e-centrar").onclick = () => {
+      b.contenido.zoom = 1;
+      b.contenido.offsetX = 0;
+      b.contenido.offsetY = 0;
+      document.getElementById("e-zoom").value = 1;
+      document.getElementById("e-offx").value = 0;
+      document.getElementById("e-offy").value = 0;
+      document.getElementById("e-zoom-val").textContent = "1.00x";
+      document.getElementById("e-offx-val").textContent = "0%";
+      document.getElementById("e-offy-val").textContent = "0%";
+      refrescar();
+      persistir();
+    };
     document.getElementById("e-file").onchange = (ev) => {
       const file = ev.target.files[0];
       if (!file) return;

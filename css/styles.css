@@ -30,6 +30,7 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .campo{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
 .campo input, .campo select{background:#0d0f14;border:1px solid var(--line);border-radius:6px;color:var(--texto);padding:6px 8px;font-size:13px;width:100%;min-width:0}
 .campo input[type="color"]{padding:2px;height:32px}
+.valor-slider{color:var(--texto);font-variant-numeric:tabular-nums}
 .fila-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
 .separador{border:none;border-top:1px solid var(--line);margin:14px 0}
 .acciones-agregar{display:flex;flex-direction:column;gap:8px}
