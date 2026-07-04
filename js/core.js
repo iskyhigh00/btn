@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.6.1";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -183,14 +183,17 @@ function _agruparEnBloques(botones) {
   return [...porClave.values()];
 }
 
-// Acomoda los miembros de un bloque (todos del mismo w/h) en una grilla lo
-// más cuadrada posible: así un solo corte horizontal o vertical separa a
-// varios botones de una sola vez, en vez de uno por uno.
+// Acomoda los miembros de un bloque (todos del mismo w/h) en una grilla:
+// usa tantas columnas como entren en el ancho de la hoja (una sola fila si
+// caben todos) y recién pasa a más filas cuando no entran, para que un corte
+// recto separe a varios botones de una sola vez en vez de uno por uno.
 function _armarGrillaBloque(miembros, gap) {
   miembros.sort((a, b) => (a.contenido?.numero ?? 0) - (b.contenido?.numero ?? 0));
   const n = miembros.length;
   const w = miembros[0].w, h = miembros[0].h;
-  const cols = Math.min(n, Math.ceil(Math.sqrt(n)));
+  const anchoDisponible = HOJA_ANCHO_MM - 2 * gap;
+  const colsQueEntran = Math.max(1, Math.floor((anchoDisponible + gap) / (w + gap)));
+  const cols = Math.min(n, colsQueEntran);
   return {
     ancho: cols * w + (cols - 1) * gap,
     alto: Math.ceil(n / cols) * h + (Math.ceil(n / cols) - 1) * gap,
