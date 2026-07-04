@@ -17,6 +17,7 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .btn.sec{opacity:.85}
 #toasts{position:fixed;left:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:999}
 .toast{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.toast-accion{display:flex;align-items:center;gap:12px;justify-content:space-between}
 
 /* ---------- Editor ---------- */
 .editor{display:grid;grid-template-columns:320px 1fr;gap:16px;align-items:start}
@@ -66,8 +67,8 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
   touch-action:none;
 }
 .boton-print.seleccionado{outline:2px solid var(--accent);outline-offset:2px}
-.boton-print .boton-linea{line-height:1.1;white-space:pre-wrap;padding:0 4%}
-.boton-print .boton-numero{line-height:1;margin:1px 0}
+.boton-print .boton-linea{line-height:1.1;white-space:nowrap;overflow:hidden;padding:0 4%}
+.boton-print .boton-numero{line-height:1;margin:1px 0;white-space:nowrap;overflow:hidden}
 .boton-logo-wrap{width:82%;height:82%;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .boton-logo-wrap img{width:100%;height:100%;object-fit:contain;pointer-events:none}
 .marca-corte{position:absolute;background:#000;pointer-events:none}

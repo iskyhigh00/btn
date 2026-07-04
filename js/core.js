@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -24,6 +24,23 @@ function toast(msg, duracionMs) {
   t.textContent = msg;
   cont.appendChild(t);
   setTimeout(() => t.remove(), duracionMs || 2200);
+}
+
+// Toast con un botón de acción (ej. "Deshacer") para operaciones sin
+// confirmación previa, tipo borrar con la tecla Supr.
+function toastAccion(msg, textoAccion, accionFn, duracionMs) {
+  const cont = document.getElementById("toasts");
+  const t = document.createElement("div");
+  t.className = "toast toast-accion";
+  const span = document.createElement("span");
+  span.textContent = msg;
+  const btn = document.createElement("button");
+  btn.className = "btn sm";
+  btn.textContent = textoAccion;
+  btn.onclick = () => { accionFn(); t.remove(); };
+  t.append(span, btn);
+  cont.appendChild(t);
+  setTimeout(() => t.remove(), duracionMs || 6000);
 }
 
 function uid() {
@@ -123,6 +140,32 @@ function marcasDeCorteBoton(boton) {
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
+}
+
+// Reacomoda todos los botones de una hoja en filas prolijas (igual alto por
+// fila) para que se pueda cortar con guillotina: primero cortes horizontales
+// de lado a lado, después cada fila se corta en columnas por separado.
+// Muta boton.x/boton.y de cada botón recibido.
+function reorganizarBotones(botones, gapMm) {
+  const gap = gapMm ?? CORTE_GAP_MM * 4;
+  const ordenados = [...botones].sort((a, b) => {
+    if (b.h !== a.h) return b.h - a.h;
+    const ga = a.grupoId || a.id, gb = b.grupoId || b.id;
+    if (ga !== gb) return ga < gb ? -1 : 1;
+    return (a.contenido.numero ?? 0) - (b.contenido.numero ?? 0);
+  });
+  let x = gap, y = gap, altoFila = 0;
+  ordenados.forEach((b) => {
+    if (x + b.w > HOJA_ANCHO_MM - gap) {
+      x = gap;
+      y += altoFila + gap;
+      altoFila = 0;
+    }
+    b.x = x;
+    b.y = y;
+    x += b.w + gap;
+    altoFila = Math.max(altoFila, b.h);
+  });
 }
 
 // Parsea "1, 2, 3, 5, 10" -> [1,2,3,5,10] (ignora vacíos y no-números).

@@ -9,20 +9,35 @@
 //     forma/tipo, etc.). Los inputs de texto/número/color hacen "input" directo
 //     sobre el DOM del botón + Store.guardar(), sin re-render.
 
-let _seleccionId = null;
+let _seleccion = new Set(); // ids de botones seleccionados en el lienzo
 let _zoom = 0.85;
 
 function _hojaActual() {
   return Store.hojaActual();
 }
 
+// Devuelve el botón seleccionado solo cuando la selección es de exactamente
+// uno (para 0 o 2+ el panel muestra "agregar" o "selección múltiple").
 function _botonSeleccionado() {
-  const h = _hojaActual();
-  return h.botones.find((b) => b.id === _seleccionId) || null;
+  if (_seleccion.size !== 1) return null;
+  const id = [..._seleccion][0];
+  return _hojaActual().botones.find((b) => b.id === id) || null;
+}
+
+// Un botón se pinta como "seleccionado" si está en la selección, o si la
+// selección es un único botón de un grupo (entonces se resalta el grupo
+// completo, ya que el panel edita a todos sus miembros a la vez).
+function _estaResaltado(b) {
+  if (_seleccion.has(b.id)) return true;
+  if (_seleccion.size === 1) {
+    const solo = _botonSeleccionado();
+    if (solo && solo.grupoId && solo.grupoId === b.grupoId) return true;
+  }
+  return false;
 }
 
 function vistaInicio() {
-  _seleccionId = null;
+  _seleccion = new Set();
   app.innerHTML = `
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
@@ -33,6 +48,7 @@ function vistaInicio() {
           <button class="btn sm" id="btn-hoja-renombrar">Renombrar</button>
           <button class="btn sm" id="btn-hoja-duplicar">Duplicar</button>
           <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
+          <button class="btn sm" id="btn-reorganizar">↻ Reorganizar</button>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
           <button class="btn sm" id="btn-exportar">Exportar JSON</button>
@@ -64,13 +80,13 @@ function _renderSelectorHojas() {
 function _enlazarToolbar() {
   document.getElementById("sel-hoja").onchange = (e) => {
     S = Store.setHojaActual(e.target.value);
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderHoja();
     _renderPanel();
   };
   document.getElementById("btn-hoja-nueva").onclick = () => {
     S = Store.crearHoja();
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderSelectorHojas();
     _renderHoja();
     _renderPanel();
@@ -85,7 +101,7 @@ function _enlazarToolbar() {
   };
   document.getElementById("btn-hoja-duplicar").onclick = () => {
     S = Store.duplicarHoja(_hojaActual().id);
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderSelectorHojas();
     _renderHoja();
     _renderPanel();
@@ -94,10 +110,16 @@ function _enlazarToolbar() {
     const h = _hojaActual();
     if (!confirm(`¿Eliminar "${h.nombre}" y todos sus botones?`)) return;
     S = Store.eliminarHoja(h.id);
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderSelectorHojas();
     _renderHoja();
     _renderPanel();
+  };
+  document.getElementById("btn-reorganizar").onclick = () => {
+    reorganizarBotones(_hojaActual().botones);
+    Store.guardar();
+    _renderHoja();
+    toast("Botones reorganizados en filas parejas para cortar con guillotina.");
   };
   document.getElementById("zoom").oninput = (e) => {
     _zoom = Number(e.target.value);
@@ -122,7 +144,7 @@ function _enlazarToolbar() {
     const reader = new FileReader();
     reader.onload = () => {
       S = Store.importarJSON(reader.result, modo);
-      _seleccionId = null;
+      _seleccion = new Set();
       _renderSelectorHojas();
       _renderHoja();
       _renderPanel();
@@ -178,8 +200,31 @@ function _pintarBoton(el, b) {
   el.style.background = b.fondo;
   el.style.color = b.color;
   el.style.borderRadius = formaRadioCss(b);
-  el.classList.toggle("seleccionado", b.id === _seleccionId);
+  el.classList.toggle("seleccionado", _estaResaltado(b));
   el.innerHTML = _contenidoHTML(b);
+  _ajustarTextoAncho(el);
+}
+
+// Si el texto no entra en el ancho del botón (sin saltos de línea), achica
+// la tipografía hasta que quepa en una sola línea.
+function _ajustarTextoAncho(el) {
+  el.querySelectorAll(".boton-linea, .boton-numero").forEach((linea) => {
+    let intentos = 0;
+    while (linea.scrollWidth > linea.clientWidth + 0.5 && intentos < 40) {
+      const actual = parseFloat(linea.style.fontSize) || 3;
+      const nuevo = actual * 0.92;
+      if (nuevo < 1.5) break; // no bajar de ~1.5mm, quedaría ilegible
+      linea.style.fontSize = `${nuevo.toFixed(2)}mm`;
+      intentos++;
+    }
+  });
+}
+
+function _pintarSeleccionEnCanvas() {
+  document.querySelectorAll(".boton-print").forEach((el) => {
+    const b = _hojaActual().botones.find((x) => x.id === el.dataset.id);
+    el.classList.toggle("seleccionado", b ? _estaResaltado(b) : false);
+  });
 }
 
 function _enlazarBotones() {
@@ -187,8 +232,14 @@ function _enlazarBotones() {
     el.onpointerdown = (e) => _iniciarDrag(e, el);
     el.onclick = (e) => {
       if (el.dataset.arrastrado === "1") { el.dataset.arrastrado = "0"; return; }
-      _seleccionId = el.dataset.id;
-      document.querySelectorAll(".boton-print").forEach((x) => x.classList.toggle("seleccionado", x === el));
+      const id = el.dataset.id;
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        if (_seleccion.has(id)) _seleccion.delete(id);
+        else _seleccion.add(id);
+      } else {
+        _seleccion = new Set([id]);
+      }
+      _pintarSeleccionEnCanvas();
       _renderPanel();
     };
   });
@@ -235,10 +286,47 @@ function _renderMarcasCorte() {
   hojaEl.insertAdjacentHTML("afterbegin", frag);
 }
 
+// Elimina botones sin pedir confirmación (para atajos como Supr) pero permite
+// deshacer: se guarda una copia y un toast ofrece restaurarla.
+function _eliminarConDeshacer(botones, hojaId) {
+  if (!botones.length) return;
+  hojaId = hojaId || _hojaActual().id;
+  const copias = botones.map((b) => JSON.parse(JSON.stringify(b)));
+  botones.forEach((b) => { S = Store.eliminarBoton(hojaId, b.id); });
+  toastAccion(
+    copias.length === 1 ? "Botón eliminado." : `${copias.length} botones eliminados.`,
+    "Deshacer",
+    () => {
+      copias.forEach((boton) => { S = Store.agregarBoton(hojaId, boton); });
+      _seleccion = new Set(copias.map((b) => b.id));
+      _renderHoja();
+      _renderPanel();
+    }
+  );
+}
+
+// Atajo de teclado: Supr/Backspace borra lo que está resaltado en el lienzo
+// (el botón clickeado, o el grupo completo si lo que está resaltado es un
+// grupo), sin confirmar, pero con deshacer disponible en el toast.
+function _manejarBorradoTeclado() {
+  if (!_seleccion.size) return;
+  const resaltados = _hojaActual().botones.filter(_estaResaltado);
+  if (!resaltados.length) return;
+  _eliminarConDeshacer(resaltados);
+  _seleccion = new Set();
+  _renderHoja();
+  _renderPanel();
+}
+
 // ---------- Panel lateral (agregar / editar botón / editar grupo) ----------
 
 function _renderPanel() {
   const panel = document.getElementById("panel");
+  if (_seleccion.size > 1) {
+    panel.innerHTML = _formSeleccionMultiple();
+    _enlazarFormSeleccionMultiple();
+    return;
+  }
   const b = _botonSeleccionado();
   if (b && b.grupoId) {
     panel.innerHTML = _formEditarGrupo(b.grupoId);
@@ -250,6 +338,73 @@ function _renderPanel() {
     panel.innerHTML = _formAgregar();
     _enlazarFormAgregar();
   }
+}
+
+// ---------- Selección múltiple (varios botones, incluso de grupos distintos) ----------
+
+function _formSeleccionMultiple() {
+  const ids = [..._seleccion];
+  const primero = _hojaActual().botones.find((b) => b.id === ids[0]);
+  return `
+    <div class="panel-header">
+      <h3>Selección múltiple (${ids.length} botones)</h3>
+      <button class="btn sm sec" id="ms-cerrar">✕ Cerrar</button>
+    </div>
+    <div class="panel-form">
+      <p class="muted" style="font-size:12px;margin:0">Se aplica a los ${ids.length} botones seleccionados, aunque sean de grupos distintos.</p>
+      ${_bloqueFormaTamano("ms", primero)}
+      ${_bloqueColores("ms", primero)}
+      <button class="btn sec" id="ms-eliminar">Eliminar seleccionados</button>
+    </div>`;
+}
+
+function _enlazarFormSeleccionMultiple() {
+  const ids = [..._seleccion];
+  const hojaId = _hojaActual().id;
+  const seleccionados = () => _hojaActual().botones.filter((b) => ids.includes(b.id));
+  const refrescarTodos = () => {
+    seleccionados().forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
+    _renderMarcasCorte();
+  };
+  const persistir = () => Store.guardar();
+
+  document.getElementById("ms-cerrar").onclick = () => {
+    _seleccion = new Set();
+    _pintarSeleccionEnCanvas();
+    _renderPanel();
+  };
+
+  document.getElementById("ms-w").oninput = (e) => { const v = Number(e.target.value); if (v) seleccionados().forEach((b) => (b.w = v)); refrescarTodos(); };
+  document.getElementById("ms-w").onchange = persistir;
+  document.getElementById("ms-h").oninput = (e) => { const v = Number(e.target.value); if (v) seleccionados().forEach((b) => (b.h = v)); refrescarTodos(); };
+  document.getElementById("ms-h").onchange = persistir;
+
+  document.getElementById("ms-forma").onchange = (e) => {
+    seleccionados().forEach((b) => (b.forma = e.target.value));
+    document.getElementById("ms-radio-wrap").style.display = e.target.value === "redondeado" ? "" : "none";
+    refrescarTodos();
+    persistir();
+  };
+  const radio = document.getElementById("c-radio");
+  if (radio) {
+    radio.oninput = (e) => { const v = Number(e.target.value) || 0; seleccionados().forEach((b) => (b.radioMm = v)); refrescarTodos(); };
+    radio.onchange = persistir;
+  }
+
+  document.getElementById("ms-fondo").oninput = (e) => { seleccionados().forEach((b) => (b.fondo = e.target.value)); refrescarTodos(); };
+  document.getElementById("ms-fondo").onchange = persistir;
+  document.getElementById("ms-color").oninput = (e) => { seleccionados().forEach((b) => (b.color = e.target.value)); refrescarTodos(); };
+  document.getElementById("ms-color").onchange = persistir;
+
+  _enlazarPlantillas("ms");
+
+  document.getElementById("ms-eliminar").onclick = () => {
+    if (!confirm(`¿Eliminar los ${seleccionados().length} botones seleccionados?`)) return;
+    _eliminarConDeshacer(seleccionados(), hojaId);
+    _seleccion = new Set();
+    _renderHoja();
+    _renderPanel();
+  };
 }
 
 function _miembrosGrupo(grupoId) {
@@ -363,7 +518,7 @@ function _crearYSeleccionar(boton) {
   boton.x = pos.x;
   boton.y = pos.y;
   S = Store.agregarBoton(_hojaActual().id, boton);
-  _seleccionId = boton.id;
+  _seleccion = new Set([boton.id]);
   _renderHoja();
   _renderPanel();
 }
@@ -456,7 +611,7 @@ function _enlazarFormAgregar() {
       if (!primero) primero = boton.id;
     });
     S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, fondo, color });
-    _seleccionId = primero;
+    _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
     toast(`${textoConteo(numeros.length)} generados.`);
@@ -523,7 +678,7 @@ function _enlazarFormEditar(b) {
   const el = () => document.querySelector(`.boton-print[data-id="${b.id}"]`);
 
   document.getElementById("e-cerrar").onclick = () => {
-    _seleccionId = null;
+    _seleccion = new Set();
     document.querySelectorAll(".boton-print").forEach((x) => x.classList.remove("seleccionado"));
     _renderPanel();
   };
@@ -535,7 +690,7 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-eliminar").onclick = () => {
     if (!confirm("¿Eliminar este botón?")) return;
     S = Store.eliminarBoton(hojaId, b.id);
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderHoja();
     _renderPanel();
   };
@@ -636,7 +791,7 @@ function _enlazarFormEditarGrupo(grupoId) {
   const miembros = () => _miembrosGrupo(grupoId);
 
   document.getElementById("e-cerrar").onclick = () => {
-    _seleccionId = null;
+    _seleccion = new Set();
     document.querySelectorAll(".boton-print").forEach((x) => x.classList.remove("seleccionado"));
     _renderPanel();
   };
@@ -703,7 +858,7 @@ function _enlazarFormEditarGrupo(grupoId) {
       nuevoBoton.y = pos.y;
       S = Store.agregarBoton(hojaId, nuevoBoton);
     });
-    _seleccionId = miembros()[0]?.id || null;
+    _seleccion = new Set(miembros()[0] ? [miembros()[0].id] : []);
     _renderHoja();
     _renderPanel();
     toast("Grupo actualizado.");
@@ -713,7 +868,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     const cant = miembros().length;
     if (!confirm(`¿Eliminar los ${cant} botones de este grupo?`)) return;
     miembros().forEach((m) => { S = Store.eliminarBoton(hojaId, m.id); });
-    _seleccionId = null;
+    _seleccion = new Set();
     _renderHoja();
     _renderPanel();
   };
@@ -721,7 +876,9 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.querySelectorAll(".chip-x").forEach((btn) => {
     btn.onclick = () => {
       S = Store.eliminarBoton(hojaId, btn.dataset.id);
-      if (_seleccionId === btn.dataset.id) _seleccionId = miembros()[0]?.id || null;
+      if (_seleccion.has(btn.dataset.id)) {
+        _seleccion = new Set(miembros()[0] ? [miembros()[0].id] : []);
+      }
       _renderHoja();
       _renderPanel();
     };
