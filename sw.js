@@ -1,4 +1,4 @@
-const CACHE = "nombre-app-v0.1.0";
+const CACHE = "botonera-v0.2.0";
 const HTML = ["./", "./index.html"];
 const ASSETS = [
   "./css/styles.css",

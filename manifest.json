@@ -1,6 +1,6 @@
 {
-  "name": "NOMBRE_DE_LA_APP",
-  "short_name": "NOMBRE_DE_LA_APP",
+  "name": "Botonera",
+  "short_name": "Botonera",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
