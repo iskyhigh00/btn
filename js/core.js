@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.4.1";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -10,6 +10,10 @@ const CORTE_GAP_MM = 0.6;
 const CORTE_LARGO_MM = 3;
 const CORTE_GROSOR_MM = 0.15;
 const PX_POR_MM = 96 / 25.4;
+// Separación por defecto entre botones: tiene que ser mayor que
+// CORTE_GAP_MM + CORTE_LARGO_MM (3.6mm) o la marca de corte de un botón queda
+// tapada por el botón de al lado.
+const SEPARACION_MM = 5;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -82,7 +86,7 @@ function formaRadioCss(boton) {
 // Busca la próxima posición libre en la hoja usando un acomodo tipo "estantes":
 // llena la fila de izquierda a derecha, salta de fila cuando no entra más.
 function empacarPosicion(botonesExistentes, w, h, gapMm) {
-  const gap = gapMm ?? CORTE_GAP_MM * 2;
+  const gap = gapMm ?? SEPARACION_MM;
   let cursorX = gap;
   let cursorY = gap;
   let altoFila = 0;
@@ -147,7 +151,7 @@ function clamp(n, min, max) {
 // de lado a lado, después cada fila se corta en columnas por separado.
 // Muta boton.x/boton.y de cada botón recibido.
 function reorganizarBotones(botones, gapMm) {
-  const gap = gapMm ?? CORTE_GAP_MM * 4;
+  const gap = gapMm ?? SEPARACION_MM;
   const ordenados = [...botones].sort((a, b) => {
     if (b.h !== a.h) return b.h - a.h;
     const ga = a.grupoId || a.id, gb = b.grupoId || b.id;
