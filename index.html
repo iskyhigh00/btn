@@ -29,7 +29,33 @@
   <script src="js/app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
+      window.addEventListener("load", async () => {
+        // updateViaCache:"none" evita que el propio sw.js se sirva desde la
+        // caché HTTP del navegador al chequear actualizaciones (si no, GitHub
+        // Pages puede hacer que el chequeo compare una copia vieja contra sí
+        // misma y nunca detecte que hay una versión nueva).
+        const reg = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+        reg.update();
+        reg.addEventListener("updatefound", () => {
+          // Si ya había un controlador ACTIVO al momento de detectar la
+          // actualización, es que esta pestaña venía usando una versión
+          // anterior: al activarse la nueva, recargamos solos. En la
+          // primerísima instalación (sin controlador previo) no hace falta
+          // recargar, ya se está viendo la versión recién instalada.
+          const habiaVersionAnterior = !!navigator.serviceWorker.controller;
+          const nuevo = reg.installing;
+          if (!nuevo) return;
+          nuevo.addEventListener("statechange", () => {
+            if (nuevo.state === "activated" && habiaVersionAnterior) location.reload();
+          });
+        });
+        // Mientras la pestaña queda abierta, revisa cada tanto si hay una
+        // versión nueva (si no, solo se chequea al recargar/navegar).
+        setInterval(() => reg.update(), 5 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update();
+        });
+      });
     }
   </script>
 </body>
