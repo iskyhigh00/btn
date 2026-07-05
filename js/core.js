@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.8.3";
+const APP_VERSION = "0.8.4";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -17,6 +17,10 @@ const PX_POR_MM = 96 / 25.4;
 // el vecino (no hacen falta ahí: el borde impreso ya marca el corte); siguen
 // viéndose en los bordes que dan a un espacio libre.
 const SEPARACION_MM = 0;
+// Margen entre el bloque de botones y el borde físico de la hoja (distinto
+// de la separación entre botones, que es 0): dejar aire para manipular la
+// hoja/guillotina y por si la impresora no llega a imprimir hasta el borde.
+const MARGEN_HOJA_MM = 8;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -90,12 +94,13 @@ function formaRadioCss(boton) {
 // llena la fila de izquierda a derecha, salta de fila cuando no entra más.
 function empacarPosicion(botonesExistentes, w, h, gapMm) {
   const gap = gapMm ?? SEPARACION_MM;
-  let cursorX = gap;
-  let cursorY = gap;
+  const margen = MARGEN_HOJA_MM;
+  let cursorX = margen;
+  let cursorY = margen;
   let altoFila = 0;
 
-  // Si no hay botones, arranca en la esquina superior izquierda.
-  if (!botonesExistentes.length) return { x: gap, y: gap };
+  // Si no hay botones, arranca en la esquina superior izquierda (con margen).
+  if (!botonesExistentes.length) return { x: margen, y: margen };
 
   // Reconstruye el "estante" actual a partir del último botón agregado.
   const ultimo = botonesExistentes[botonesExistentes.length - 1];
@@ -103,11 +108,11 @@ function empacarPosicion(botonesExistentes, w, h, gapMm) {
   cursorY = ultimo.y;
   altoFila = Math.max(...botonesExistentes.map((b) => (b.y === ultimo.y ? b.h : 0)));
 
-  if (cursorX + w > HOJA_ANCHO_MM - gap) {
-    cursorX = gap;
+  if (cursorX + w > HOJA_ANCHO_MM - margen) {
+    cursorX = margen;
     cursorY = ultimo.y + altoFila + gap;
   }
-  if (cursorY + h > HOJA_ALTO_MM - gap) {
+  if (cursorY + h > HOJA_ALTO_MM - margen) {
     // No entra más en la hoja: se apila igual al final para que el usuario la reordene a mano.
     toast("El botón no entra en el espacio libre de la hoja: acomodalo a mano.");
   }
@@ -194,7 +199,7 @@ function _armarGrillaBloque(miembros, gap) {
   miembros.sort((a, b) => (a.contenido?.numero ?? 0) - (b.contenido?.numero ?? 0));
   const n = miembros.length;
   const w = miembros[0].w, h = miembros[0].h;
-  const anchoDisponible = HOJA_ANCHO_MM - 2 * gap;
+  const anchoDisponible = HOJA_ANCHO_MM - 2 * MARGEN_HOJA_MM;
   const colsQueEntran = Math.max(1, Math.floor((anchoDisponible + gap) / (w + gap)));
   const cols = Math.min(n, colsQueEntran);
   return {
@@ -215,12 +220,13 @@ function _armarGrillaBloque(miembros, gap) {
 // Muta boton.x/boton.y de cada botón recibido.
 function reorganizarBotones(botones, gapMm) {
   const gap = gapMm ?? SEPARACION_MM;
+  const margen = MARGEN_HOJA_MM;
   const bloques = _agruparEnBloques(botones).map((miembros) => _armarGrillaBloque(miembros, gap));
   bloques.sort((a, b) => b.alto - a.alto || b.ancho - a.ancho);
-  let x = gap, y = gap, altoFila = 0;
+  let x = margen, y = margen, altoFila = 0;
   bloques.forEach((caja) => {
-    if (x + caja.ancho > HOJA_ANCHO_MM - gap) {
-      x = gap;
+    if (x + caja.ancho > HOJA_ANCHO_MM - margen) {
+      x = margen;
       y += altoFila + gap;
       altoFila = 0;
     }
