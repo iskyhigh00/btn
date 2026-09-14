@@ -42,6 +42,7 @@ function vistaInicio() {
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
+        <div class="aviso-impresion">⚠️ Al imprimir: <b>Márgenes = Ninguno</b> y <b>Escala = 100% / Tamaño real</b> (no "Ajustar"). El navegador no deja preseleccionar esto desde la página, revisalo en el diálogo de impresión.</div>
         <div class="lienzo-toolbar card">
           <select id="sel-hoja"></select>
           <button class="btn sm" id="btn-hoja-nueva">+ Hoja</button>
@@ -54,7 +55,7 @@ function vistaInicio() {
           <button class="btn sm" id="btn-exportar">Exportar JSON</button>
           <button class="btn sm" id="btn-importar">Importar JSON</button>
           <input type="file" id="input-importar" accept="application/json" style="display:none">
-          <button class="btn" id="btn-imprimir">🖨️ Imprimir</button>
+          <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
         <div class="lienzo-scroll">
           <div class="hoja" id="hoja" style="transform:scale(${_zoom})"></div>
