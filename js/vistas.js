@@ -233,7 +233,7 @@ function _contenidoHTML(b) {
   fsAbajo = fsAbajo.toFixed(2);
   let html = "";
   if (arriba) html += `<div class="boton-linea boton-linea-arriba" style="font-size:${fsArriba}mm">${esc(arriba)}</div>`;
-  if (c.numero != null && c.numero !== "") html += `<div class="boton-numero" style="font-size:${fsNumero}mm">${esc(c.numero)}</div>`;
+  if (c.numero != null && c.numero !== "") html += `<div class="boton-numero" style="font-size:${fsNumero}mm">${esc(c.numeroPrefijo || "")}${esc(c.numero)}</div>`;
   if (abajo) html += `<div class="boton-linea boton-linea-abajo" style="font-size:${fsAbajo}mm">${esc(abajo)}</div>`;
   return html;
 }
@@ -599,6 +599,9 @@ function _formAgregar() {
       <label class="campo">Lista de números (separados por coma)<input id="l-lista" placeholder="1, 2, 3, 5, 10"></label>
       <div class="muted conteo" id="l-conteo">0 botones</div>
       <label class="campo">Texto arriba<input id="l-arriba" placeholder="JUEGUE" value="${esc(u.arriba)}"></label>
+      <div class="fila-2">
+        <label class="campo">Prefijo del número (ej: X)<input id="l-numero-prefijo" value="${esc(u.numeroPrefijo || "")}"></label>
+      </div>
       <label class="campo">Texto abajo<input id="l-abajo" placeholder="LÍNEA" value="${esc(u.abajo)}"></label>
       ${_bloqueFormaTamano("l", u)}
       ${_bloqueColores("l", u)}
@@ -613,7 +616,7 @@ function _enlazarFormAgregar() {
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
       id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
-      contenido: { tipo: "texto", arriba: u.arriba, numero: null, abajo: u.abajo },
+      contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo },
     });
   };
 
@@ -658,12 +661,13 @@ function _enlazarFormAgregar() {
     const color = document.getElementById("l-color").value;
     const arriba = document.getElementById("l-arriba").value;
     const abajo = document.getElementById("l-abajo").value;
+    const numeroPrefijo = document.getElementById("l-numero-prefijo").value;
     const grupoId = uid();
     let primero = null;
     numeros.forEach((n) => {
       const boton = {
         id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId,
-        contenido: { tipo: "texto", arriba, numero: n, abajo },
+        contenido: { tipo: "texto", arriba, numero: n, numeroPrefijo, abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
       boton.x = pos.x;
@@ -671,7 +675,7 @@ function _enlazarFormAgregar() {
       S = Store.agregarBoton(_hojaActual().id, boton);
       if (!primero) primero = boton.id;
     });
-    S = Store.actualizarUltimoUsado({ arriba, abajo, forma, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, numeroPrefijo, forma, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
     _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
@@ -720,7 +724,10 @@ function _formEditar(b) {
 function _bloqueEdicionTexto(c) {
   return `
     <label class="campo">Texto arriba<input id="e-arriba" value="${esc(c.arriba || "")}"></label>
-    <label class="campo">Número grande (opcional)<input id="e-numero" type="number" value="${c.numero ?? ""}"></label>
+    <div class="fila-2">
+      <label class="campo">Prefijo del número (ej: X)<input id="e-numero-prefijo" value="${esc(c.numeroPrefijo || "")}"></label>
+      <label class="campo">Número grande (opcional)<input id="e-numero" type="number" value="${c.numero ?? ""}"></label>
+    </div>
     <label class="campo">Texto abajo<input id="e-abajo" value="${esc(c.abajo || "")}"></label>
   `;
 }
@@ -766,6 +773,7 @@ function _enlazarFormEditar(b) {
       color: b.contenido.tipo === "texto" ? b.color : undefined,
       arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
       abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
+      numeroPrefijo: b.contenido.tipo === "texto" ? b.contenido.numeroPrefijo : undefined,
     });
   };
 
@@ -845,6 +853,8 @@ function _enlazarFormEditar(b) {
     document.getElementById("e-arriba").onchange = persistir;
     document.getElementById("e-abajo").oninput = (e) => { b.contenido.abajo = e.target.value; refrescar(); };
     document.getElementById("e-abajo").onchange = persistir;
+    document.getElementById("e-numero-prefijo").oninput = (e) => { b.contenido.numeroPrefijo = e.target.value; refrescar(); };
+    document.getElementById("e-numero-prefijo").onchange = persistir;
     document.getElementById("e-numero").oninput = (e) => {
       b.contenido.numero = e.target.value === "" ? null : Number(e.target.value);
       refrescar();
@@ -868,11 +878,14 @@ function _formEditarGrupo(grupoId) {
     <div class="panel-form">
       <label class="campo">Números (separados por coma)<input id="gr-numeros" value="${esc(numeros)}"></label>
       <label class="campo">Texto arriba<input id="gr-arriba" value="${esc(base.contenido.arriba || "")}"></label>
+      <div class="fila-2">
+        <label class="campo">Prefijo del número (ej: X)<input id="gr-numero-prefijo" value="${esc(base.contenido.numeroPrefijo || "")}"></label>
+      </div>
       <label class="campo">Texto abajo<input id="gr-abajo" value="${esc(base.contenido.abajo || "")}"></label>
       ${_bloqueFormaTamano("gr", base)}
       ${_bloqueColores("gr", base)}
       <div class="chips">
-        ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
+        ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numeroPrefijo || "")}${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
       </div>
       <button class="btn sec" id="gr-eliminar">Eliminar grupo completo</button>
     </div>`;
@@ -899,7 +912,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     if (base) {
       Store.actualizarUltimoUsado({
         forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
-        arriba: base.contenido.arriba, abajo: base.contenido.abajo,
+        arriba: base.contenido.arriba, abajo: base.contenido.abajo, numeroPrefijo: base.contenido.numeroPrefijo,
       });
     }
   };
@@ -908,6 +921,8 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-arriba").onchange = persistir;
   document.getElementById("gr-abajo").oninput = (e) => { miembros().forEach((m) => (m.contenido.abajo = e.target.value)); refrescarTodos(); };
   document.getElementById("gr-abajo").onchange = persistir;
+  document.getElementById("gr-numero-prefijo").oninput = (e) => { miembros().forEach((m) => (m.contenido.numeroPrefijo = e.target.value)); refrescarTodos(); };
+  document.getElementById("gr-numero-prefijo").onchange = persistir;
 
   document.getElementById("gr-w").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.w = v)); refrescarTodos(); };
   document.getElementById("gr-w").onchange = persistir;
@@ -948,7 +963,7 @@ function _enlazarFormEditarGrupo(grupoId) {
       if (actualesNums.includes(n)) return;
       const nuevoBoton = {
         id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
-        contenido: { tipo: "texto", arriba: base.contenido.arriba, numero: n, abajo: base.contenido.abajo },
+        contenido: { tipo: "texto", arriba: base.contenido.arriba, numero: n, numeroPrefijo: base.contenido.numeroPrefijo, abajo: base.contenido.abajo },
       };
       const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);
       nuevoBoton.x = pos.x;
