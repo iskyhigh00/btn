@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.10.0";
+const APP_VERSION = "0.10.1";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -242,52 +242,87 @@ function reorganizarBotones(botones, gapMm) {
 // guarda el usuario por celda son los textos y su tamaño (ver Store).
 // Las medidas están en "px de referencia" del diseño original (1158x279) y se
 // convierten a mm con PANEL_MM_POR_PX, así el panel sale a tamaño real.
+// Cada texto (slot) se ancla a la izquierda ("l") o derecha ("r") del interior
+// del botón: ox = distancia al lado anclado, oy = distancia al borde de arriba,
+// base = tamaño de letra, lh = interlineado y sx = estiramiento horizontal
+// (el original tiene la letra ensanchada respecto a su alto). Los ox/oy se midieron contra el
+// diseño original botón por botón (el original está armado a mano, así que
+// cada botón tiene pequeñas diferencias).
 const PANEL_REF_W = 1158;
 const PANEL_REF_H = 279;
 const PANEL_ANCHO_MM = 266;
 const PANEL_MM_POR_PX = PANEL_ANCHO_MM / PANEL_REF_W;
+const PANEL_BORDE_PX = 5;
 
-// Tamaño base (px de referencia) y posición de cada texto según el layout.
-const PANEL_LAYOUTS = {
-  simbolo: {
-    top: { base: 17, css: "right:18;top:6;text-align:right", multilinea: true },
-    numero: { base: 63, css: "left:28;top:22" },
-    bottom: { base: 16, css: "right:14;bottom:7;text-align:right" },
-  },
-  juegue: {
-    top: { base: 17, css: "left:22;top:8" },
-    numero: { base: 64, css: "left:22;top:24" },
-    bottom: { base: 16, css: "left:20;bottom:6" },
-  },
-};
-
-const PANEL_CELDAS = (function () {
-  const celdas = [
-    { id: "servicio", x: 28, y: 14, w: 84, h: 40, layout: "texto", base: 14, negrita: true, borde: true, texto: "SERVICIO" },
-    { id: "cobrar", x: 28, y: 208, w: 80, h: 30, layout: "texto", base: 14, negrita: true, borde: true, texto: "COBRAR" },
-    { id: "maxima", x: 957, y: 25, w: 178, h: 187, layout: "texto", base: 33, negrita: false, borde: false, texto: "MAXIMA\nAPUESTA" },
-  ];
-  const xsArriba = [123, 290, 457, 622, 790];
-  const xsAbajo = [123, 292, 460, 625, 792];
-  const creditos = ["8", "18", "38", "68", "88"];
-  const giros = ["X1", "X2", "X3", "X6", "X10"];
-  for (let i = 0; i < 5; i++) {
-    celdas.push({ id: `simbolo${i + 1}`, x: xsArriba[i], y: 17, w: 157, h: 111, layout: "simbolo", borde: true,
-      top: "SIMBOLO\nDE ORO", numero: String(i + 1), bottom: `${creditos[i]} CREDITOS` });
-    celdas.push({ id: `juegue${i + 1}`, x: xsAbajo[i], y: 138, w: 157, h: 110, layout: "juegue", borde: true,
-      top: "JUEGUE", numero: giros[i], bottom: "POR GIRO" });
-  }
-  return celdas;
-})();
+const PANEL_CELDAS = [
+  { id: "servicio", x: 30, y: 13, w: 84, h: 39, negrita: true, slots: {
+      texto: { texto: "SERVICIO", base: 16, ax: "l", ox: -1, oy: 8, lh: 1.2, sx: 1.149 },
+  } },
+  { id: "cobrar", x: 28, y: 205, w: 83, h: 44, negrita: true, slots: {
+      texto: { texto: "COBRAR", base: 16, ax: "l", ox: 2, oy: 4, lh: 1.2, sx: 1.127 },
+  } },
+  { id: "maxima", x: 957, y: 24, w: 180, h: 191, slots: {
+      texto: { texto: "MAXIMA\nAPUESTA", base: 33, ax: "l", ox: 13, oy: 9, lh: 1.82, sx: 1.16 },
+  } },
+  { id: "simbolo1", x: 123, y: 13, w: 157, h: 115, slots: {
+      top: { texto: "SIMBOLO\nDE ORO", base: 16, ax: "r", ox: 15, oy: 6, lh: 1.203, sx: 1.133, multi: true },
+      numero: { texto: "1", base: 66.45, ax: "l", ox: 21, oy: 20, lh: 1, sx: 1.065 },
+      bottom: { texto: "8 CREDITOS", base: 16, ax: "r", ox: 7, oy: 75, lh: 1.2, sx: 1.171 },
+  } },
+  { id: "juegue1", x: 124, y: 137, w: 156, h: 112, slots: {
+      top: { texto: "JUEGUE", base: 16, ax: "l", ox: 19, oy: 3, lh: 1.2, sx: 1.1 },
+      numero: { texto: "X1", base: 65.04, ax: "l", ox: 19, oy: 24, lh: 1, sx: 1.079 },
+      bottom: { texto: "POR GIRO", base: 17.6, ax: "l", ox: 14, oy: 81, lh: 1.2, sx: 1.073 },
+  } },
+  { id: "simbolo2", x: 291, y: 14, w: 156, h: 117, slots: {
+      top: { texto: "SIMBOLO\nDE ORO", base: 16, ax: "r", ox: 23, oy: 6, lh: 1.2, sx: 1.133, multi: true },
+      numero: { texto: "2", base: 66.45, ax: "l", ox: 9, oy: 14, lh: 1, sx: 1.065 },
+      bottom: { texto: "18 CREDITOS", base: 16, ax: "r", ox: 23, oy: 76, lh: 1.2, sx: 1.171 },
+  } },
+  { id: "juegue2", x: 291, y: 137, w: 156, h: 114, slots: {
+      top: { texto: "JUEGUE", base: 16, ax: "l", ox: 12, oy: 2, lh: 1.2, sx: 1.1 },
+      numero: { texto: "X2", base: 65.04, ax: "l", ox: 10, oy: 22, lh: 1, sx: 1.079 },
+      bottom: { texto: "POR GIRO", base: 17.6, ax: "l", ox: 6, oy: 82, lh: 1.2, sx: 1.073 },
+  } },
+  { id: "simbolo3", x: 457, y: 14, w: 158, h: 119, slots: {
+      top: { texto: "SIMBOLO\nDE ORO", base: 16, ax: "r", ox: 26, oy: 5, lh: 1.266, sx: 1.133, multi: true },
+      numero: { texto: "3", base: 66.45, ax: "l", ox: 11, oy: 15, lh: 1, sx: 1.065 },
+      bottom: { texto: "38 CREDITOS", base: 16, ax: "r", ox: 5, oy: 76, lh: 1.2, sx: 1.171 },
+  } },
+  { id: "juegue3", x: 459, y: 136, w: 158, h: 116, slots: {
+      top: { texto: "JUEGUE", base: 16, ax: "l", ox: 11, oy: 5, lh: 1.2, sx: 1.1 },
+      numero: { texto: "X3", base: 65.04, ax: "l", ox: 5, oy: 19, lh: 1, sx: 1.079 },
+      bottom: { texto: "POR GIRO", base: 17.6, ax: "l", ox: 3, oy: 82, lh: 1.2, sx: 1.073 },
+  } },
+  { id: "simbolo4", x: 623, y: 15, w: 158, h: 116, slots: {
+      top: { texto: "SIMBOLO\nDE ORO", base: 16, ax: "r", ox: 24, oy: 4, lh: 1.266, sx: 1.133, multi: true },
+      numero: { texto: "4", base: 66.45, ax: "l", ox: 9, oy: 13, lh: 1, sx: 1.065 },
+      bottom: { texto: "68 CREDITOS", base: 16, ax: "r", ox: 12, oy: 73, lh: 1.2, sx: 1.171 },
+  } },
+  { id: "juegue4", x: 623, y: 137, w: 158, h: 115, slots: {
+      top: { texto: "JUEGUE", base: 16, ax: "l", ox: 14, oy: 5, lh: 1.2, sx: 1.1 },
+      numero: { texto: "X6", base: 65.04, ax: "l", ox: 9, oy: 23, lh: 1, sx: 1.079 },
+      bottom: { texto: "POR GIRO", base: 17.6, ax: "l", ox: 9, oy: 85, lh: 1.2, sx: 1.073 },
+  } },
+  { id: "simbolo5", x: 791, y: 14, w: 158, h: 115, slots: {
+      top: { texto: "SIMBOLO\nDE ORO", base: 16, ax: "r", ox: 27, oy: 8, lh: 1.266, sx: 1.133, multi: true },
+      numero: { texto: "5", base: 66.45, ax: "l", ox: 6, oy: 14, lh: 1, sx: 1.065 },
+      bottom: { texto: "88 CREDITOS", base: 16, ax: "r", ox: 15, oy: 73, lh: 1.2, sx: 1.171 },
+  } },
+  { id: "juegue5", x: 791, y: 136, w: 160, h: 116, slots: {
+      top: { texto: "JUEGUE", base: 16, ax: "l", ox: 6, oy: 6, lh: 1.2, sx: 1.1 },
+      numero: { texto: "X10", base: 65.04, ax: "l", ox: 11, oy: 26, lh: 1, sx: 1.079 },
+      bottom: { texto: "POR GIRO", base: 17.6, ax: "l", ox: 5, oy: 87, lh: 1.2, sx: 1.073 },
+  } },
+];
 
 // Texto/tamaño efectivo de una celda: lo guardado por el usuario pisa los
 // valores originales; el tamaño es un multiplicador (1 = tamaño original).
 function panelValoresCelda(celda, guardado) {
   const g = guardado || {};
-  const slots = celda.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"];
   const v = {};
-  slots.forEach((s) => {
-    v[s] = { texto: g[s] != null ? g[s] : celda[s], tam: g[`tam_${s}`] != null ? g[`tam_${s}`] : 1 };
+  Object.keys(celda.slots).forEach((s) => {
+    v[s] = { texto: g[s] != null ? g[s] : celda.slots[s].texto, tam: g[`tam_${s}`] != null ? g[`tam_${s}`] : 1 };
   });
   return v;
 }

@@ -1043,27 +1043,22 @@ function _panelLineas(t) {
   return String(t).split("\n").map(esc).join("<br>");
 }
 
-function _panelEstiloPos(css, u) {
-  return css.split(";").map((p) => {
-    const [k, v] = p.split(":");
-    return k === "text-align" ? `${k}:${v}` : `${k}:${(Number(v) * u).toFixed(3)}mm`;
-  }).join(";");
-}
-
 function _panelCeldaHTML(c) {
   const u = PANEL_MM_POR_PX;
   const v = panelValoresCelda(c, Store.panelCelda(c.id));
-  const maxAncho = `max-width:${((c.w - 20) * u).toFixed(3)}mm`;
-  if (c.layout === "texto") {
-    const s = v.texto;
-    if (!String(s.texto).trim()) return "";
-    return `<div class="panel-txt" style="font-size:${(c.base * s.tam * u).toFixed(3)}mm;${maxAncho}${c.negrita ? ";font-weight:700" : ""}">${_panelLineas(s.texto)}</div>`;
-  }
-  const lay = PANEL_LAYOUTS[c.layout];
-  return ["top", "numero", "bottom"].map((slot) => {
+  const anchoInt = c.w - 2 * PANEL_BORDE_PX;
+  return Object.keys(c.slots).map((slot) => {
+    const def = c.slots[slot];
     const s = v[slot];
     if (!String(s.texto).trim()) return "";
-    return `<div class="panel-txt panel-${slot}" style="${_panelEstiloPos(lay[slot].css, u)};font-size:${(lay[slot].base * s.tam * u).toFixed(3)}mm;${maxAncho}">${_panelLineas(s.texto)}</div>`;
+    const lado = def.ax === "r" ? "right" : "left";
+    const fs = (def.base * s.tam * u).toFixed(3);
+    const pos = `${lado}:${(def.ox * u).toFixed(3)}mm;top:${(def.oy * u).toFixed(3)}mm`;
+    const sx = def.sx || 1;
+    const maxAncho = `max-width:${(((anchoInt - def.ox) / sx) * u).toFixed(3)}mm`;
+    const alin = def.ax === "r" ? ";text-align:right;transform-origin:right top" : ";transform-origin:left top";
+    const estira = sx !== 1 ? `;transform:scaleX(${sx})` : "";
+    return `<div class="panel-txt${c.negrita ? " negrita" : ""}" data-slot="${slot}" style="${pos};font-size:${fs}mm;line-height:${def.lh};${maxAncho}${alin}${estira}">${_panelLineas(s.texto)}</div>`;
   }).join("");
 }
 
@@ -1082,14 +1077,13 @@ function _panelAjustar(el) {
 
 function _panelEstiloCelda(c) {
   const u = PANEL_MM_POR_PX;
-  const pos = `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
-  return c.borde ? `${pos};border-width:${(4 * u).toFixed(3)}mm` : pos;
+  return `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm;border-width:${(PANEL_BORDE_PX * u).toFixed(3)}mm`;
 }
 
 function _renderPanelHoja() {
   const hoja = document.getElementById("panel-hoja");
   hoja.innerHTML = PANEL_CELDAS.map((c) =>
-    `<div class="panel-celda ${c.layout === "texto" ? "texto" : ""} ${c.borde ? "borde" : ""} ${c.id === _panelSel ? "seleccionada" : ""}" data-id="${c.id}" style="${_panelEstiloCelda(c)}">${_panelCeldaHTML(c)}</div>`
+    `<div class="panel-celda ${c.id === _panelSel ? "seleccionada" : ""}" data-id="${c.id}" style="${_panelEstiloCelda(c)}">${_panelCeldaHTML(c)}</div>`
   ).join("");
   hoja.querySelectorAll(".panel-celda").forEach((el) => {
     _panelAjustar(el);
@@ -1110,7 +1104,8 @@ function _pintarPanelCelda(id) {
 }
 
 function _panelEtiqueta(c) {
-  return c.layout === "texto" ? c.texto.replace(/\n/g, " ") : c.numero;
+  const s = c.slots.numero || c.slots.texto;
+  return s.texto.replace(/\n/g, " ");
 }
 
 function _renderPanelLateral() {
@@ -1118,18 +1113,17 @@ function _renderPanelLateral() {
   const chips = (titulo, celdas) => `
     <h4>${titulo}</h4>
     <div class="chips">${celdas.map((c) => `<button class="btn sm ${c.id === _panelSel ? "activo" : ""}" data-sel="${c.id}">${esc(_panelEtiqueta(c))}</button>`).join("")}</div>`;
-  const selector = chips("Fila de arriba", PANEL_CELDAS.filter((c) => c.layout === "simbolo"))
-    + chips("Fila de abajo", PANEL_CELDAS.filter((c) => c.layout === "juegue"))
-    + chips("Otros", PANEL_CELDAS.filter((c) => c.layout === "texto"));
+  const selector = chips("Fila de arriba", PANEL_CELDAS.filter((c) => c.id.startsWith("simbolo")))
+    + chips("Fila de abajo", PANEL_CELDAS.filter((c) => c.id.startsWith("juegue")))
+    + chips("Otros", PANEL_CELDAS.filter((c) => c.slots.texto));
 
   const c = PANEL_CELDAS.find((x) => x.id === _panelSel);
   let form = `<p class="muted" style="font-size:12px">Haz clic en un botón del panel (o aquí) para cambiar su texto y el tamaño de la letra. El resto del diseño es fijo.</p>`;
   if (c) {
-    const guardado = Store.panelCelda(c.id);
-    const v = panelValoresCelda(c, guardado);
+    const v = panelValoresCelda(c, Store.panelCelda(c.id));
     const etiquetas = { texto: "Texto", top: "Texto de arriba", numero: "Número / texto grande", bottom: "Texto de abajo" };
-    const slots = c.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"];
-    const multi = (slot) => slot === "texto" || (PANEL_LAYOUTS[c.layout]?.[slot]?.multilinea);
+    const slots = Object.keys(c.slots);
+    const multi = (slot) => slot === "texto" || c.slots[slot].multi;
     form = `<hr class="separador"><h3>Editar botón</h3><div class="panel-form">` + slots.map((slot) => `
       <label class="campo">${etiquetas[slot]}${multi(slot)
         ? `<textarea id="p-${slot}" rows="2">${esc(v[slot].texto)}</textarea>`
@@ -1148,7 +1142,7 @@ function _renderPanelLateral() {
     };
   });
   if (!c) return;
-  (c.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"]).forEach((slot) => {
+  Object.keys(c.slots).forEach((slot) => {
     document.getElementById(`p-${slot}`).oninput = (e) => {
       S = Store.actualizarPanelCelda(c.id, { [slot]: e.target.value });
       _pintarPanelCelda(c.id);

@@ -52,22 +52,22 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .btn.activo{border-color:var(--accent);color:var(--accent)}
 
 /* ---------- Panel fijo ---------- */
+@font-face{font-family:"Carlito";font-weight:400;font-style:normal;font-display:block;src:url("../fonts/Carlito-Regular.woff2") format("woff2")}
+@font-face{font-family:"Carlito";font-weight:700;font-style:normal;font-display:block;src:url("../fonts/Carlito-Bold.woff2") format("woff2")}
 .panel-hoja{
   position:relative;overflow:hidden;flex-shrink:0;transform-origin:top left;
-  background:linear-gradient(90deg,#b81f3b 0%,#d54a5a 35%,#c23442 65%,#8f3a4c 100%);
+  background:linear-gradient(90deg,#bb2240 0%,#d54b5a 35%,#c43743 65%,#8f3a4c 100%);
   box-shadow:0 4px 24px rgba(0,0,0,.5);
 }
 .panel-celda{
   position:absolute;box-sizing:border-box;overflow:hidden;cursor:pointer;
-  background:linear-gradient(135deg,#05398b,#0d4799);color:#fff;
-  font-family:Arial,Helvetica,sans-serif;font-weight:400;
+  border-style:solid;border-color:#fefe83;box-shadow:.25mm .25mm 0 rgba(0,0,0,.35);
+  background:linear-gradient(160deg,#07388a 0%,#0a49a6 55%,#0c4aa0 100%);color:#fff;
+  font-family:"Carlito",Calibri,Arial,sans-serif;font-weight:400;
 }
-.panel-celda.borde{border-style:solid;border-color:#fefe83}
-.panel-celda.texto{display:flex;align-items:center;justify-content:center;text-align:center}
 .panel-celda.seleccionada{outline:2px solid var(--accent);outline-offset:2px;z-index:1}
-.panel-txt{position:absolute;white-space:nowrap;overflow:hidden;line-height:1.08}
-.panel-celda.texto .panel-txt{position:static}
-.panel-numero{line-height:1}
+.panel-txt{position:absolute;white-space:nowrap;overflow:hidden}
+.panel-txt.negrita{font-weight:700}
 
 .lienzo-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .aviso-impresion{font-size:12px;color:#e8b84b;background:#2a220f;border:1px solid #4a3a15;border-radius:8px;padding:8px 12px;line-height:1.4}
