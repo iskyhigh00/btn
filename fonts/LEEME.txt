@@ -1,3 +1,3 @@
-Carlito (Regular y Bold), subconjunto latino. Fuente libre, compatible en métricas con Calibri.
-Licencia: SIL Open Font License 1.1 (https://openfontlicense.org). Se incluye para que el panel
-se vea igual en cualquier dispositivo, tenga o no Calibri instalada.
+DejaVu Sans Bold, subconjunto latino. Fuente libre (licencia Bitstream Vera / DejaVu, permite
+redistribuir e incrustar: https://dejavu-fonts.github.io/License.html). Se incluye para que el
+panel se vea igual en cualquier dispositivo.

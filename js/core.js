@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.11.0";
+const APP_VERSION = "0.12.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -240,57 +240,70 @@ function reorganizarBotones(botones, gapMm) {
 // Réplica de un panel de botones de una máquina. El diseño (posiciones,
 // colores, marcos, fondo) vive acá en código y NO es editable: lo único que
 // guarda el usuario por celda son los textos y su tamaño (ver Store).
-// Las medidas están en "px de referencia" (panel de 1158x279) y se convierten
-// a mm con PANEL_MM_POR_PX, así el panel sale a tamaño real. Las posiciones y
-// tamaños de los botones se midieron sobre el diseño original.
-const PANEL_REF_W = 1158;
-const PANEL_REF_H = 279;
+// Las medidas están en "px de referencia" (panel de 1568x312) y se convierten
+// a mm con PANEL_MM_POR_PX, así el panel sale a tamaño real. Posiciones y
+// tamaños se midieron sobre la imagen del diseño esperado.
+const PANEL_REF_W = 1568;
+const PANEL_REF_H = 312;
 const PANEL_ANCHO_MM = 266;
 const PANEL_MM_POR_PX = PANEL_ANCHO_MM / PANEL_REF_W;
-// Grosor del marco dorado de un botón (lateral L / arriba y abajo V): más
-// delgado en los botones chicos para que les quede cara azul útil.
-function panelMarco(c) {
-  return { L: Math.min(14, Math.round(c.w * 0.12)), V: Math.min(10, Math.round(c.h * 0.15)) };
-}
+// Grosor de las barras naranjas que sobresalen del marco de cada botón.
+const PANEL_BARRA = 8;
 
-// Disposición de los textos de cada tipo de botón. ax: "l" (desde la izquierda,
-// a ox) o "c" (centrado); ay: "t" (desde arriba), "b" (desde abajo) o "m"
-// (centrado en vertical), a oy. base = tamaño de letra, lh = interlineado,
-// rol = color (ver .rol-* en styles.css).
-const PANEL_TIPOS = {
-  simbolo: {
-    numero: { base: 62, ax: "l", ox: 20, ay: "t", oy: 14, lh: 1, rol: "num" },
-    top: { base: 16, ax: "l", ox: 58, ay: "t", oy: 21, lh: 1.08, rol: "oro", multi: true },
-    bottom: { base: 15, ax: "c", ay: "b", oy: 15, lh: 1, rol: "oro" },
-  },
-  juegue: {
-    top: { base: 15, ax: "c", ay: "t", oy: 13, lh: 1, rol: "claro" },
-    numero: { base: 60, ax: "c", ay: "t", oy: 23, lh: 1, rol: "num" },
-    bottom: { base: 14, ax: "c", ay: "b", oy: 12, lh: 1, rol: "claro" },
-  },
-};
-
+// Cada celda: caja = placa del marco + barras. cara = [x, y, ancho, alto]
+// absolutos de la cara de color; m = margen entre cara y borde de la placa.
+// Textos (slots): ax "l" (desde la izquierda, a ox) o "c" (centrado); ay "t"
+// (desde arriba), "b" (desde abajo) o "m" (centrado), a oy; base = tamaño de
+// letra, lh = interlineado, sx = estiramiento horizontal, rol = color.
 const PANEL_CELDAS = (function () {
-  const tipo = (t, textos) => Object.fromEntries(Object.entries(PANEL_TIPOS[t]).map(([k, d]) => [k, { sx: 1, ...d, texto: textos[k] }]));
-  const unico = (texto, base, rol, lh) => ({ texto: { texto, base, ax: "c", ay: "m", lh, sx: 1, rol, multi: texto.includes("\n") } });
+  const sl = (texto, base, extra) => ({ texto, base, ax: "c", ox: 0, ay: "m", oy: 0, lh: 1, sx: 1, rol: "blanco", ...extra });
+  const marco = (id, cara, opts, slots) => {
+    const m = opts.m != null ? opts.m : 10;
+    const pw = cara[2] + 2 * m, ph = cara[3] + 2 * m;
+    return { id, x: cara[0] - m - PANEL_BARRA, y: cara[1] - m - PANEL_BARRA, w: pw + 2 * PANEL_BARRA, h: ph + 2 * PANEL_BARRA, m, cara: [m + PANEL_BARRA, m + PANEL_BARRA, cara[2], cara[3]], rojo: !!opts.rojo, solape: opts.solape || 0, slots };
+  };
   const celdas = [
-    { id: "servicio", x: 30, y: 13, w: 84, h: 39, slots: unico("SERVICIO", 15, "blanco", 1) },
-    { id: "cobrar", x: 28, y: 205, w: 83, h: 44, slots: unico("COBRAR", 15, "gris", 1) },
-    { id: "maxima", x: 957, y: 24, w: 180, h: 191, slots: unico("MAXIMA\nAPUESTA", 32, "num", 1.12) },
+    { id: "titulo", x: 560, y: 12, w: 480, h: 32, sinMarco: true, slots: { texto: sl("JUEGUE 243 FORMAS", 26) } },
+    marco("servicio", [76, 46, 77, 49], { m: 14, rojo: true }, { texto: sl("SERVICIO", 16) }),
+    marco("cobrar", [76, 222, 76, 46], { m: 14 }, { texto: sl("COBRAR", 16) }),
+    marco("maxima", [1346, 112, 162, 130], { m: 14 }, { texto: sl("MÁXIMA\nAPUESTA", 28, { lh: 1.5, multi: true }) }),
+    { id: "minima", x: 200, y: 284, w: 300, h: 16, sinMarco: true, slots: { texto: sl("APUESTA MÍN. 8", 12) } },
   ];
-  // [x, y, w, h] medidos sobre el original (marco incluido).
-  const arriba = [[123, 13, 157, 115], [291, 14, 156, 117], [457, 14, 158, 119], [623, 15, 158, 116], [791, 14, 158, 115]];
-  const abajo = [[124, 137, 156, 112], [291, 137, 156, 114], [459, 136, 158, 116], [623, 137, 158, 115], [791, 136, 160, 116]];
+  const arriba = [[266, 56, 128, 86], [480, 56, 128, 86], [692, 56, 128, 86], [904, 56, 124, 86], [1112, 56, 132, 86]];
+  const abajo = [[264, 182, 134, 88], [480, 182, 128, 88], [692, 182, 126, 88], [904, 182, 124, 88], [1112, 182, 128, 88]];
   const creditos = ["8", "18", "38", "68", "88"];
   const giros = ["X1", "X2", "X3", "X6", "X10"];
   for (let i = 0; i < 5; i++) {
-    const [ax, ay, aw, ah] = arriba[i];
-    celdas.push({ id: `simbolo${i + 1}`, x: ax, y: ay, w: aw, h: ah, slots: tipo("simbolo", {
-      top: "SIMBOLO\nDE ORO", numero: String(i + 1), bottom: `${creditos[i]} CREDITOS` }) });
-    const [bx, by, bw, bh] = abajo[i];
-    celdas.push({ id: `juegue${i + 1}`, x: bx, y: by, w: bw, h: bh, slots: tipo("juegue", {
-      top: "JUEGUE", numero: giros[i], bottom: "POR GIRO" }) });
+    celdas.push(marco(`simbolo${i + 1}`, arriba[i], {}, {
+      numero: sl(String(i + 1), 58, { ax: "l", ox: 26, ay: "t", oy: 22 }),
+      top: sl(i === 0 ? "SÍMBOLO\nDE ORO" : "SÍMBOLOS\nDE ORO", 14, { ax: "l", ox: 60, ay: "t", oy: 33, lh: 1.29, rol: "oro", multi: true }),
+      bottom: sl(`(${creditos[i]} CRÉDITOS)`, 14, { ay: "b", oy: 20, rol: "oro" }),
+    }));
+    celdas.push(marco(`juegue${i + 1}`, abajo[i], {}, {
+      top: sl("JUEGUE", 16, { ay: "t", oy: 24 }),
+      numero: sl(giros[i], 52, { ay: "t", oy: 36 }),
+      bottom: sl("POR GIRO", 14, { ay: "b", oy: 18, rol: "oro" }),
+    }));
   }
+  // Posiciones/tamaños de cada texto, ajustados contra el diseño esperado.
+  const ajustes = {
+  titulo: { texto: { base: 25, ox: -8, oy: -5, lh: 1, sx: 0.902 } },
+  servicio: { texto: { base: 16.11, ox: -1.5, oy: -1, lh: 1, sx: 1.013 } },
+  cobrar: { texto: { base: 16.11, ox: 0, oy: 0, lh: 1, sx: 0.945 } },
+  maxima: { texto: { base: 27.32, ox: 0, oy: -4, lh: 1.72, sx: 0.986 } },
+  minima: { texto: { base: 12, ox: -19.5, oy: 0.5, lh: 1, sx: 0.89 } },
+  simbolo1: { numero: { base: 58, ox: 20, oy: 20, lh: 1, sx: 1 }, top: { base: 14, ox: 60, oy: 31, lh: 1.3, sx: 0.863 }, bottom: { base: 15.37, ox: 0, oy: 29, lh: 1, sx: 0.879 } },
+  juegue1: { top: { base: 16, ox: 1, oy: 16, lh: 1, sx: 0.833 }, numero: { base: 53.37, ox: 0, oy: 35, lh: 1, sx: 0.972 }, bottom: { base: 16.94, ox: 0, oy: 14, lh: 1, sx: 0.789 } },
+  simbolo2: { numero: { base: 58, ox: 20, oy: 20, lh: 1, sx: 1 }, top: { base: 14, ox: 60, oy: 31, lh: 1.3, sx: 0.863 }, bottom: { base: 15.37, ox: 0.5, oy: 29, lh: 1, sx: 0.879 } },
+  juegue2: { top: { base: 16, ox: 1, oy: 16, lh: 1, sx: 0.833 }, numero: { base: 53.37, ox: 1, oy: 33, lh: 1, sx: 0.972 }, bottom: { base: 16.94, ox: 0.5, oy: 14, lh: 1, sx: 0.789 } },
+  simbolo3: { numero: { base: 58, ox: 20, oy: 20, lh: 1, sx: 1 }, top: { base: 14, ox: 60, oy: 31, lh: 1.3, sx: 0.863 }, bottom: { base: 15.37, ox: 1, oy: 29, lh: 1, sx: 0.879 } },
+  juegue3: { top: { base: 16, ox: 1, oy: 16, lh: 1, sx: 0.833 }, numero: { base: 53.37, ox: 0.5, oy: 33, lh: 1, sx: 0.972 }, bottom: { base: 16.94, ox: 0, oy: 14, lh: 1, sx: 0.789 } },
+  simbolo4: { numero: { base: 58, ox: 20, oy: 20, lh: 1, sx: 1 }, top: { base: 14, ox: 60, oy: 31, lh: 1.3, sx: 0.863 }, bottom: { base: 15.37, ox: 0.5, oy: 29, lh: 1, sx: 0.879 } },
+  juegue4: { top: { base: 16, ox: 1, oy: 16, lh: 1, sx: 0.833 }, numero: { base: 53.37, ox: 0.5, oy: 33, lh: 1, sx: 0.972 }, bottom: { base: 16.94, ox: 0.5, oy: 14, lh: 1, sx: 0.789 } },
+  simbolo5: { numero: { base: 58, ox: 20, oy: 20, lh: 1, sx: 1 }, top: { base: 14, ox: 60, oy: 31, lh: 1.3, sx: 0.863 }, bottom: { base: 15.37, ox: 0.5, oy: 29, lh: 1, sx: 0.879 } },
+  juegue5: { top: { base: 16, ox: 0, oy: 16, lh: 1, sx: 0.833 }, numero: { base: 53.37, ox: 0.5, oy: 33, lh: 1, sx: 0.972 }, bottom: { base: 16.94, ox: 0.5, oy: 14, lh: 1, sx: 0.789 } },
+  };
+  celdas.forEach((c) => Object.entries(ajustes[c.id] || {}).forEach(([k, a]) => Object.assign(c.slots[k], a)));
   return celdas;
 })();
 

@@ -52,25 +52,20 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .btn.activo{border-color:var(--accent);color:var(--accent)}
 
 /* ---------- Panel fijo ---------- */
-@font-face{font-family:"Carlito";font-weight:400;font-style:normal;font-display:block;src:url("../fonts/Carlito-Regular.woff2") format("woff2")}
-@font-face{font-family:"Carlito";font-weight:700;font-style:normal;font-display:block;src:url("../fonts/Carlito-Bold.woff2") format("woff2")}
+@font-face{font-family:"DejaVu Sans";font-weight:700;font-style:normal;font-display:block;src:url("../fonts/DejaVuSans-Bold.woff2") format("woff2")}
 .panel-hoja{
   position:relative;overflow:hidden;flex-shrink:0;transform-origin:top left;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23f2b8ff' stroke-opacity='.32' stroke-width='1.2'%3E%3Cpath d='M-20 20A20 20 0 0 1 20 20M-13.3 20A13.3 13.3 0 0 1 13.3 20M-6.7 20A6.7 6.7 0 0 1 6.7 20'/%3E%3Cpath d='M20 20A20 20 0 0 1 60 20M26.7 20A13.3 13.3 0 0 1 53.3 20M33.3 20A6.7 6.7 0 0 1 46.7 20'/%3E%3Cpath d='M0 40A20 20 0 0 1 40 40M6.7 40A13.3 13.3 0 0 1 33.3 40M13.3 40A6.7 6.7 0 0 1 26.7 40'/%3E%3C/g%3E%3C/svg%3E") 0 0/ calc(var(--u,1mm) * 40) calc(var(--u,1mm) * 40),
-    linear-gradient(180deg,rgba(150,25,75,.30) 0%,rgba(150,25,75,0) 45%,rgba(60,60,220,.32) 100%),
-    linear-gradient(100deg,#8a2a62 0%,#b8387f 26%,#a43aa2 52%,#7c35b2 78%,#5f3cc4 100%);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.11' stroke-width='1.4'%3E%3Cpath d='M-20 20A20 20 0 0 1 20 20M-13.3 20A13.3 13.3 0 0 1 13.3 20M-6.7 20A6.7 6.7 0 0 1 6.7 20'/%3E%3Cpath d='M20 20A20 20 0 0 1 60 20M26.7 20A13.3 13.3 0 0 1 53.3 20M33.3 20A6.7 6.7 0 0 1 46.7 20'/%3E%3Cpath d='M0 40A20 20 0 0 1 40 40M6.7 40A13.3 13.3 0 0 1 33.3 40M13.3 40A6.7 6.7 0 0 1 26.7 40'/%3E%3C/g%3E%3C/svg%3E") 0 0/ calc(var(--u,1mm) * 40) calc(var(--u,1mm) * 40),
+    linear-gradient(90deg,#c80089 0%,#bb009e 15%,#9305cf 45%,#6e07db 68%,#5805d2 83%,#4305cc 100%);
   box-shadow:0 4px 24px rgba(0,0,0,.5);
 }
 .panel-borde,.panel-marco{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
-.panel-celda{position:absolute;cursor:pointer;font-family:"Carlito",Calibri,Arial,sans-serif;font-weight:700;filter:drop-shadow(.2mm .3mm .3mm rgba(40,0,50,.55))}
+.panel-celda{position:absolute;cursor:pointer;font-family:"DejaVu Sans","Verdana",sans-serif;font-weight:700}
 .panel-celda.seleccionada{outline:2px solid #fff;outline-offset:1px;z-index:1}
-.panel-txt{position:absolute;white-space:nowrap;overflow:hidden;width:max-content;text-shadow:0 .1mm .25mm rgba(0,25,90,.85),0 0 .2mm rgba(0,25,90,.7)}
-.rol-num{color:#8fdcff}
-.rol-oro{color:#dcd27a}
-.rol-claro{color:#e4eaf8}
-.rol-blanco{color:#f2eeff}
-.rol-gris{color:#cdc88e}
+.panel-txt{position:absolute;white-space:nowrap;width:max-content}
+.rol-oro{color:#ffee00}
+.rol-blanco,.rol-num,.rol-claro{color:#fff}
 
 .lienzo-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .aviso-impresion{font-size:12px;color:#e8b84b;background:#2a220f;border:1px solid #4a3a15;border-radius:8px;padding:8px 12px;line-height:1.4}

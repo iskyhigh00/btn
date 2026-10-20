@@ -1,11 +1,11 @@
-const CACHE = "botonera-v0.11.0";
+const CACHE = "botonera-v0.12.0";
 const HTML = ["./", "./index.html"];
 const ASSETS = [
   "./css/styles.css",
   "./js/store.js", "./js/core.js", "./js/vistas.js", "./js/app.js",
   "./manifest.json",
   "./img/logo-icon.png",
-  "./fonts/Carlito-Regular.woff2", "./fonts/Carlito-Bold.woff2",
+  "./fonts/DejaVuSans-Bold.woff2",
 ];
 
 self.addEventListener("install", (e) => {
