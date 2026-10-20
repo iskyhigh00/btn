@@ -17,7 +17,7 @@ todo el estado vive en `localStorage` (ver `js/store.js`). Versionado: subir
   No toca el DOM.
 - `js/vistas.js`: funciones `vistaX()` que arman `app.innerHTML` y enganchan sus
   propios listeners después de renderizar.
-- Pestaña `#/panel` (`vistaPanel()` en `js/vistas.js`): réplica de un panel de botones con diseño FIJO en código (`PANEL_CELDAS` en `js/core.js`, medido píxel a píxel contra la imagen original; la letra es Carlito embebida en `fonts/`, métricamente igual a Calibri). El usuario solo edita textos y tamaño de letra por celda; eso es lo único que guarda `Store` (`panel.celdas`). Imprime en carta horizontal vía `@page panel`. El fondo es un degradado aproximado: el original es una foto de stock con marca de agua, no se incluye; si se tiene el archivo con licencia, ponerlo como fondo del `.panel-hoja`.
+- Pestaña `#/panel` (`vistaPanel()` en `js/vistas.js`): réplica de un panel de botones con diseño FIJO en código (`PANEL_CELDAS` en `js/core.js`, posiciones medidas contra la imagen original; el aspecto (fondo con escamas, marcos dorados SVG, caras azules) imita la pantalla de la máquina; la letra es Carlito embebida en `fonts/`, métricamente igual a Calibri). El usuario solo edita textos y tamaño de letra por celda; eso es lo único que guarda `Store` (`panel.celdas`). Imprime en carta horizontal vía `@page panel`. El fondo se dibuja en CSS/SVG (no se usan fotos con marca de agua).
 - `js/app.js`: arranque (`start()`), router por hash (`router()`, un solo listener
   de `hashchange`), navegación.
 

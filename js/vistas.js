@@ -1020,7 +1020,7 @@ function vistaPanel() {
           <button class="btn" id="btn-panel-imprimir" title="Orientación: Horizontal · Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
         <div class="lienzo-scroll">
-          <div class="panel-hoja" id="panel-hoja" style="width:${(PANEL_REF_W * u).toFixed(3)}mm;height:${(PANEL_REF_H * u).toFixed(3)}mm;transform:scale(${_zoomPanel})"></div>
+          <div class="panel-hoja" id="panel-hoja" style="width:${(PANEL_REF_W * u).toFixed(3)}mm;height:${(PANEL_REF_H * u).toFixed(3)}mm;--u:${u.toFixed(5)}mm;transform:scale(${_zoomPanel})"></div>
         </div>
       </section>
     </div>`;
@@ -1043,23 +1043,52 @@ function _panelLineas(t) {
   return String(t).split("\n").map(esc).join("<br>");
 }
 
+// Marco dorado con cara azul de un botón (SVG a la medida exacta del botón).
+function _panelMarcoSVG(c) {
+  const w = c.w, h = c.h, { L, V } = panelMarco(c);
+  const fx = L, fy = V, fw = w - 2 * L, fh = h - 2 * V;
+  const g = `m${c.id}`;
+  const gancho = (x, y, dir) => `<path d="M${x} ${y}h${5 * dir}v3h${-3 * dir}v-1.2" fill="none" stroke="#ffd870" stroke-width="1"/>`;
+  return `<svg class="panel-marco" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="${g}o" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd45e"/><stop offset=".5" stop-color="#e99a14"/><stop offset="1" stop-color="#c8700a"/></linearGradient>
+      <linearGradient id="${g}b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d88410"/><stop offset=".5" stop-color="#ffc13c"/><stop offset="1" stop-color="#d88410"/></linearGradient>
+      <linearGradient id="${g}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a5cdc"/><stop offset=".5" stop-color="#1a8fe2"/><stop offset="1" stop-color="#0756cf"/></linearGradient>
+      <radialGradient id="${g}v" cx=".5" cy=".5" r=".72"><stop offset=".62" stop-color="#001a66" stop-opacity="0"/><stop offset="1" stop-color="#001a66" stop-opacity=".6"/></radialGradient>
+    </defs>
+    <rect x=".6" y=".6" width="${w - 1.2}" height="${h - 1.2}" rx="2" fill="url(#${g}o)" stroke="#7a3a06" stroke-width="1.2"/>
+    <rect x="6" y="3" width="${w - 12}" height="${V - 5}" fill="#b8330a"/>
+    <rect x="6" y="${h - V + 2}" width="${w - 12}" height="${V - 5}" fill="#b8330a"/>
+    ${gancho(9, 4.2, 1)}${gancho(w - 9, 4.2, -1)}${gancho(9, h - 6.4, 1)}${gancho(w - 9, h - 6.4, -1)}
+    <rect x="3" y="${V + 6}" width="${L - 6}" height="${h - 2 * (V + 6)}" rx="2" fill="url(#${g}b)" stroke="#8a4a06" stroke-width="1"/>
+    <rect x="${w - L + 3}" y="${V + 6}" width="${L - 6}" height="${h - 2 * (V + 6)}" rx="2" fill="url(#${g}b)" stroke="#8a4a06" stroke-width="1"/>
+    <rect x="${fx - 3}" y="${fy - 2}" width="${fw + 6}" height="${fh + 4}" fill="#b8330a"/>
+    <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="url(#${g}f)" stroke="#e8b030" stroke-width="1"/>
+    <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="url(#${g}v)"/>
+  </svg>`;
+}
+
 function _panelCeldaHTML(c) {
   const u = PANEL_MM_POR_PX;
   const v = panelValoresCelda(c, Store.panelCelda(c.id));
-  const anchoInt = c.w - 2 * PANEL_BORDE_PX;
-  return Object.keys(c.slots).map((slot) => {
+  const { L: marcoL } = panelMarco(c);
+  const anchoCara = c.w - 2 * marcoL;
+  const textos = Object.keys(c.slots).map((slot) => {
     const def = c.slots[slot];
     const s = v[slot];
     if (!String(s.texto).trim()) return "";
-    const lado = def.ax === "r" ? "right" : "left";
-    const fs = (def.base * s.tam * u).toFixed(3);
-    const pos = `${lado}:${(def.ox * u).toFixed(3)}mm;top:${(def.oy * u).toFixed(3)}mm`;
     const sx = def.sx || 1;
-    const maxAncho = `max-width:${(((anchoInt - def.ox) / sx) * u).toFixed(3)}mm`;
-    const alin = def.ax === "r" ? ";text-align:right;transform-origin:right top" : ";transform-origin:left top";
-    const estira = sx !== 1 ? `;transform:scaleX(${sx})` : "";
-    return `<div class="panel-txt${c.negrita ? " negrita" : ""}" data-slot="${slot}" style="${pos};font-size:${fs}mm;line-height:${def.lh};${maxAncho}${alin}${estira}">${_panelLineas(s.texto)}</div>`;
+    const centrado = def.ax === "c";
+    const pos = [
+      centrado ? "left:50%" : `left:${(def.ox * u).toFixed(3)}mm`,
+      def.ay === "b" ? `bottom:${(def.oy * u).toFixed(3)}mm` : def.ay === "m" ? "top:50%" : `top:${(def.oy * u).toFixed(3)}mm`,
+    ].join(";");
+    const disponible = centrado ? anchoCara : c.w - marcoL - def.ox;
+    const transform = `translate(${centrado ? "-50%" : "0"},${def.ay === "m" ? "-50%" : "0"})${sx !== 1 ? ` scaleX(${sx})` : ""}`;
+    const origen = `${centrado ? "50%" : "0"} ${def.ay === "m" ? "50%" : def.ay === "b" ? "100%" : "0"}`;
+    return `<div class="panel-txt rol-${def.rol}" data-slot="${slot}" style="${pos};font-size:${(def.base * s.tam * u).toFixed(3)}mm;line-height:${def.lh};max-width:${((disponible / sx) * u).toFixed(3)}mm;text-align:${centrado ? "center" : "left"};transform:${transform};transform-origin:${origen}">${_panelLineas(s.texto)}</div>`;
   }).join("");
+  return _panelMarcoSVG(c) + textos;
 }
 
 // Si un texto no entra en el ancho de su botón, achica la letra hasta que quepa.
@@ -1077,12 +1106,28 @@ function _panelAjustar(el) {
 
 function _panelEstiloCelda(c) {
   const u = PANEL_MM_POR_PX;
-  return `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm;border-width:${(PANEL_BORDE_PX * u).toFixed(3)}mm`;
+  return `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
+}
+
+// Marco dorado exterior del panel con adornos en las esquinas.
+function _panelBordeSVG() {
+  const W = PANEL_REF_W, H = PANEL_REF_H;
+  const esquina = (x, y, dx, dy) => `<g transform="translate(${x} ${y}) scale(${dx} ${dy})">
+      <rect x="0" y="0" width="13" height="13" fill="#f3b936" stroke="#8a4a06" stroke-width="1"/>
+      <rect x="3.5" y="3.5" width="6" height="6" fill="#b8330a"/>
+      <path d="M13 6.5h10v6h-6v-3" fill="none" stroke="#f3b936" stroke-width="2.4"/>
+      <path d="M6.5 13v10h6v-6h-3" fill="none" stroke="#f3b936" stroke-width="2.4"/>
+    </g>`;
+  return `<svg class="panel-borde" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="5" y="5" width="${W - 10}" height="${H - 10}" fill="none" stroke="#8a4a06" stroke-width="5"/>
+    <rect x="5" y="5" width="${W - 10}" height="${H - 10}" fill="none" stroke="#f6c445" stroke-width="3"/>
+    ${esquina(1, 1, 1, 1)}${esquina(W - 1, 1, -1, 1)}${esquina(1, H - 1, 1, -1)}${esquina(W - 1, H - 1, -1, -1)}
+  </svg>`;
 }
 
 function _renderPanelHoja() {
   const hoja = document.getElementById("panel-hoja");
-  hoja.innerHTML = PANEL_CELDAS.map((c) =>
+  hoja.innerHTML = _panelBordeSVG() + PANEL_CELDAS.map((c) =>
     `<div class="panel-celda ${c.id === _panelSel ? "seleccionada" : ""}" data-id="${c.id}" style="${_panelEstiloCelda(c)}">${_panelCeldaHTML(c)}</div>`
   ).join("");
   hoja.querySelectorAll(".panel-celda").forEach((el) => {
