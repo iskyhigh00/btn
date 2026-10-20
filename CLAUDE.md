@@ -17,6 +17,7 @@ todo el estado vive en `localStorage` (ver `js/store.js`). Versionado: subir
   No toca el DOM.
 - `js/vistas.js`: funciones `vistaX()` que arman `app.innerHTML` y enganchan sus
   propios listeners después de renderizar.
+- Pestaña `#/panel` (`vistaPanel()` en `js/vistas.js`): réplica de un panel de botones con diseño FIJO en código (`PANEL_CELDAS`/`PANEL_LAYOUTS` en `js/core.js`). El usuario solo edita textos y tamaño de letra por celda; eso es lo único que guarda `Store` (`panel.celdas`). Imprime en carta horizontal vía `@page panel`.
 - `js/app.js`: arranque (`start()`), router por hash (`router()`, un solo listener
   de `hashchange`), navegación.
 

@@ -1,10 +1,18 @@
 const app = document.getElementById("app");
 let S;
 
+function _renderNav(hash) {
+  const enPanel = hash === "#/panel";
+  document.getElementById("nav").innerHTML = `
+    <a class="nav-link ${enPanel ? "" : "activo"}" href="#/">Hojas</a>
+    <a class="nav-link ${enPanel ? "activo" : ""}" href="#/panel">Panel</a>`;
+}
+
 function router() {
   const h = location.hash || "#/";
+  _renderNav(h);
   switch (h) {
-    case "#/": case "": return vistaInicio();
+    case "#/panel": return vistaPanel();
     default: return vistaInicio();
   }
 }

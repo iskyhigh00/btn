@@ -997,3 +997,172 @@ function _enlazarFormEditarGrupo(grupoId) {
     };
   });
 }
+
+// ---------- Pestaña "Panel" (diseño fijo; solo textos y tamaño de letra) ----------
+
+let _panelSel = null; // id de la celda seleccionada en el panel
+let _zoomPanel = 0.9;
+
+function vistaPanel() {
+  _seleccion = new Set(); // evita que Supr borre botones de la otra pestaña
+  if (!PANEL_CELDAS.some((c) => c.id === _panelSel)) _panelSel = null;
+  const u = PANEL_MM_POR_PX;
+  app.innerHTML = `
+    <div class="editor">
+      <aside class="panel-lateral card" id="panel"></aside>
+      <section class="lienzo-wrap">
+        <div class="aviso-impresion">⚠️ Al imprimir: <b>Orientación = Horizontal</b>, <b>Márgenes = Ninguno</b> y <b>Escala = 100% / Tamaño real</b> (no "Ajustar"). El navegador no deja preseleccionar esto desde la página, revísalo en el diálogo de impresión.</div>
+        <div class="lienzo-toolbar card">
+          <span class="muted">Diseño fijo: solo se pueden cambiar los textos y su tamaño.</span>
+          <span class="spacer"></span>
+          <label class="zoom-label">Zoom <input type="range" id="zoom-panel" min="0.3" max="1.3" step="0.05" value="${_zoomPanel}"></label>
+          <button class="btn sm sec" id="btn-panel-reiniciar">Restaurar todo</button>
+          <button class="btn" id="btn-panel-imprimir" title="Orientación: Horizontal · Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
+        </div>
+        <div class="lienzo-scroll">
+          <div class="panel-hoja" id="panel-hoja" style="width:${(PANEL_REF_W * u).toFixed(3)}mm;height:${(PANEL_REF_H * u).toFixed(3)}mm;transform:scale(${_zoomPanel})"></div>
+        </div>
+      </section>
+    </div>`;
+  _renderPanelHoja();
+  _renderPanelLateral();
+  document.getElementById("zoom-panel").oninput = (e) => {
+    _zoomPanel = Number(e.target.value);
+    document.getElementById("panel-hoja").style.transform = `scale(${_zoomPanel})`;
+  };
+  document.getElementById("btn-panel-reiniciar").onclick = () => {
+    if (!confirm("¿Restaurar todos los textos y tamaños del panel a los originales?")) return;
+    S = Store.reiniciarPanel();
+    _renderPanelHoja();
+    _renderPanelLateral();
+  };
+  document.getElementById("btn-panel-imprimir").onclick = () => window.print();
+}
+
+function _panelLineas(t) {
+  return String(t).split("\n").map(esc).join("<br>");
+}
+
+function _panelEstiloPos(css, u) {
+  return css.split(";").map((p) => {
+    const [k, v] = p.split(":");
+    return k === "text-align" ? `${k}:${v}` : `${k}:${(Number(v) * u).toFixed(3)}mm`;
+  }).join(";");
+}
+
+function _panelCeldaHTML(c) {
+  const u = PANEL_MM_POR_PX;
+  const v = panelValoresCelda(c, Store.panelCelda(c.id));
+  const maxAncho = `max-width:${((c.w - 20) * u).toFixed(3)}mm`;
+  if (c.layout === "texto") {
+    const s = v.texto;
+    if (!String(s.texto).trim()) return "";
+    return `<div class="panel-txt" style="font-size:${(c.base * s.tam * u).toFixed(3)}mm;${maxAncho}${c.negrita ? ";font-weight:700" : ""}">${_panelLineas(s.texto)}</div>`;
+  }
+  const lay = PANEL_LAYOUTS[c.layout];
+  return ["top", "numero", "bottom"].map((slot) => {
+    const s = v[slot];
+    if (!String(s.texto).trim()) return "";
+    return `<div class="panel-txt panel-${slot}" style="${_panelEstiloPos(lay[slot].css, u)};font-size:${(lay[slot].base * s.tam * u).toFixed(3)}mm;${maxAncho}">${_panelLineas(s.texto)}</div>`;
+  }).join("");
+}
+
+// Si un texto no entra en el ancho de su botón, achica la letra hasta que quepa.
+function _panelAjustar(el) {
+  el.querySelectorAll(".panel-txt").forEach((t) => {
+    let intentos = 0;
+    while (t.scrollWidth > t.clientWidth + 0.5 && intentos < 40) {
+      const nuevo = (parseFloat(t.style.fontSize) || 3) * 0.94;
+      if (nuevo < 0.8) break;
+      t.style.fontSize = `${nuevo.toFixed(3)}mm`;
+      intentos++;
+    }
+  });
+}
+
+function _panelEstiloCelda(c) {
+  const u = PANEL_MM_POR_PX;
+  const pos = `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
+  return c.borde ? `${pos};border-width:${(4 * u).toFixed(3)}mm` : pos;
+}
+
+function _renderPanelHoja() {
+  const hoja = document.getElementById("panel-hoja");
+  hoja.innerHTML = PANEL_CELDAS.map((c) =>
+    `<div class="panel-celda ${c.layout === "texto" ? "texto" : ""} ${c.borde ? "borde" : ""} ${c.id === _panelSel ? "seleccionada" : ""}" data-id="${c.id}" style="${_panelEstiloCelda(c)}">${_panelCeldaHTML(c)}</div>`
+  ).join("");
+  hoja.querySelectorAll(".panel-celda").forEach((el) => {
+    _panelAjustar(el);
+    el.onclick = () => {
+      _panelSel = el.dataset.id;
+      hoja.querySelectorAll(".panel-celda").forEach((x) => x.classList.toggle("seleccionada", x === el));
+      _renderPanelLateral();
+    };
+  });
+}
+
+function _pintarPanelCelda(id) {
+  const c = PANEL_CELDAS.find((x) => x.id === id);
+  const el = document.querySelector(`.panel-celda[data-id="${id}"]`);
+  if (!c || !el) return;
+  el.innerHTML = _panelCeldaHTML(c);
+  _panelAjustar(el);
+}
+
+function _panelEtiqueta(c) {
+  return c.layout === "texto" ? c.texto.replace(/\n/g, " ") : c.numero;
+}
+
+function _renderPanelLateral() {
+  const cont = document.getElementById("panel");
+  const chips = (titulo, celdas) => `
+    <h4>${titulo}</h4>
+    <div class="chips">${celdas.map((c) => `<button class="btn sm ${c.id === _panelSel ? "activo" : ""}" data-sel="${c.id}">${esc(_panelEtiqueta(c))}</button>`).join("")}</div>`;
+  const selector = chips("Fila de arriba", PANEL_CELDAS.filter((c) => c.layout === "simbolo"))
+    + chips("Fila de abajo", PANEL_CELDAS.filter((c) => c.layout === "juegue"))
+    + chips("Otros", PANEL_CELDAS.filter((c) => c.layout === "texto"));
+
+  const c = PANEL_CELDAS.find((x) => x.id === _panelSel);
+  let form = `<p class="muted" style="font-size:12px">Haz clic en un botón del panel (o aquí) para cambiar su texto y el tamaño de la letra. El resto del diseño es fijo.</p>`;
+  if (c) {
+    const guardado = Store.panelCelda(c.id);
+    const v = panelValoresCelda(c, guardado);
+    const etiquetas = { texto: "Texto", top: "Texto de arriba", numero: "Número / texto grande", bottom: "Texto de abajo" };
+    const slots = c.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"];
+    const multi = (slot) => slot === "texto" || (PANEL_LAYOUTS[c.layout]?.[slot]?.multilinea);
+    form = `<hr class="separador"><h3>Editar botón</h3><div class="panel-form">` + slots.map((slot) => `
+      <label class="campo">${etiquetas[slot]}${multi(slot)
+        ? `<textarea id="p-${slot}" rows="2">${esc(v[slot].texto)}</textarea>`
+        : `<input id="p-${slot}" type="text" value="${esc(v[slot].texto)}">`}</label>
+      <label class="campo">Tamaño de la letra <span class="valor-slider" id="p-tam-val-${slot}">${Math.round(v[slot].tam * 100)}%</span>
+        <input id="p-tam-${slot}" type="range" min="30" max="200" step="5" value="${Math.round(v[slot].tam * 100)}"></label>`).join("")
+      + `<button class="btn sm sec" id="p-restaurar">Restaurar este botón</button></div>`;
+  }
+  cont.innerHTML = `<h3>Panel</h3>${selector}${form}`;
+
+  cont.querySelectorAll("[data-sel]").forEach((b) => {
+    b.onclick = () => {
+      _panelSel = b.dataset.sel;
+      document.querySelectorAll(".panel-celda").forEach((x) => x.classList.toggle("seleccionada", x.dataset.id === _panelSel));
+      _renderPanelLateral();
+    };
+  });
+  if (!c) return;
+  (c.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"]).forEach((slot) => {
+    document.getElementById(`p-${slot}`).oninput = (e) => {
+      S = Store.actualizarPanelCelda(c.id, { [slot]: e.target.value });
+      _pintarPanelCelda(c.id);
+    };
+    document.getElementById(`p-tam-${slot}`).oninput = (e) => {
+      const tam = Number(e.target.value) / 100;
+      document.getElementById(`p-tam-val-${slot}`).textContent = `${e.target.value}%`;
+      S = Store.actualizarPanelCelda(c.id, { [`tam_${slot}`]: tam });
+      _pintarPanelCelda(c.id);
+    };
+  });
+  document.getElementById("p-restaurar").onclick = () => {
+    S = Store.reiniciarPanel(c.id);
+    _pintarPanelCelda(c.id);
+    _renderPanelLateral();
+  };
+}

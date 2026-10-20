@@ -28,7 +28,8 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .panel-header{display:flex;align-items:center;justify-content:space-between}
 .panel-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .campo{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
-.campo input, .campo select{background:#0d0f14;border:1px solid var(--line);border-radius:6px;color:var(--texto);padding:6px 8px;font-size:13px;width:100%;min-width:0}
+.campo input, .campo select, .campo textarea{background:#0d0f14;border:1px solid var(--line);border-radius:6px;color:var(--texto);padding:6px 8px;font-size:13px;width:100%;min-width:0}
+.campo textarea{resize:vertical;font-family:inherit}
 .campo input[type="color"]{padding:2px;height:32px}
 .valor-slider{color:var(--texto);font-variant-numeric:tabular-nums}
 .fila-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
@@ -43,6 +44,30 @@ body{margin:0;background:var(--bg);color:var(--texto);font-family:system-ui,-app
 .chip-x:hover{color:var(--texto)}
 .logos-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .logo-thumb{width:44px;height:44px;object-fit:contain;background:#fff;border-radius:6px;border:2px solid var(--line);cursor:pointer}
+
+#nav{display:flex;gap:6px}
+.nav-link{color:var(--muted);text-decoration:none;font-size:14px;padding:6px 12px;border-radius:8px;border:1px solid transparent}
+.nav-link:hover{color:var(--texto)}
+.nav-link.activo{color:var(--texto);border-color:var(--line);background:var(--card)}
+.btn.activo{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- Panel fijo ---------- */
+.panel-hoja{
+  position:relative;overflow:hidden;flex-shrink:0;transform-origin:top left;
+  background:linear-gradient(90deg,#b81f3b 0%,#d54a5a 35%,#c23442 65%,#8f3a4c 100%);
+  box-shadow:0 4px 24px rgba(0,0,0,.5);
+}
+.panel-celda{
+  position:absolute;box-sizing:border-box;overflow:hidden;cursor:pointer;
+  background:linear-gradient(135deg,#05398b,#0d4799);color:#fff;
+  font-family:Arial,Helvetica,sans-serif;font-weight:400;
+}
+.panel-celda.borde{border-style:solid;border-color:#fefe83}
+.panel-celda.texto{display:flex;align-items:center;justify-content:center;text-align:center}
+.panel-celda.seleccionada{outline:2px solid var(--accent);outline-offset:2px;z-index:1}
+.panel-txt{position:absolute;white-space:nowrap;overflow:hidden;line-height:1.08}
+.panel-celda.texto .panel-txt{position:static}
+.panel-numero{line-height:1}
 
 .lienzo-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .aviso-impresion{font-size:12px;color:#e8b84b;background:#2a220f;border:1px solid #4a3a15;border-radius:8px;padding:8px 12px;line-height:1.4}
@@ -96,5 +121,8 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
   #app{ padding:0 }
   .editor{ display:block }
   .hoja{ transform:none !important; box-shadow:none; margin:0 }
+  @page panel{ size: letter landscape; margin: 0; }
+  .panel-hoja{ transform:none !important; box-shadow:none; margin:6mm auto 0; page:panel }
+  .panel-celda.seleccionada{ outline:none }
   .boton-print.seleccionado{ outline:none }
 }

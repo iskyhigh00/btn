@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.9.1";
+const APP_VERSION = "0.10.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -234,6 +234,62 @@ function reorganizarBotones(botones, gapMm) {
     x += caja.ancho + gap;
     altoFila = Math.max(altoFila, caja.alto);
   });
+}
+
+// ---------- Panel fijo (pestaña "Panel") ----------
+// Réplica de un panel de botones de una máquina. El diseño (posiciones,
+// colores, bordes, fondo) vive acá en código y NO es editable: lo único que
+// guarda el usuario por celda son los textos y su tamaño (ver Store).
+// Las medidas están en "px de referencia" del diseño original (1158x279) y se
+// convierten a mm con PANEL_MM_POR_PX, así el panel sale a tamaño real.
+const PANEL_REF_W = 1158;
+const PANEL_REF_H = 279;
+const PANEL_ANCHO_MM = 266;
+const PANEL_MM_POR_PX = PANEL_ANCHO_MM / PANEL_REF_W;
+
+// Tamaño base (px de referencia) y posición de cada texto según el layout.
+const PANEL_LAYOUTS = {
+  simbolo: {
+    top: { base: 17, css: "right:18;top:6;text-align:right", multilinea: true },
+    numero: { base: 63, css: "left:28;top:22" },
+    bottom: { base: 16, css: "right:14;bottom:7;text-align:right" },
+  },
+  juegue: {
+    top: { base: 17, css: "left:22;top:8" },
+    numero: { base: 64, css: "left:22;top:24" },
+    bottom: { base: 16, css: "left:20;bottom:6" },
+  },
+};
+
+const PANEL_CELDAS = (function () {
+  const celdas = [
+    { id: "servicio", x: 28, y: 14, w: 84, h: 40, layout: "texto", base: 14, negrita: true, borde: true, texto: "SERVICIO" },
+    { id: "cobrar", x: 28, y: 208, w: 80, h: 30, layout: "texto", base: 14, negrita: true, borde: true, texto: "COBRAR" },
+    { id: "maxima", x: 957, y: 25, w: 178, h: 187, layout: "texto", base: 33, negrita: false, borde: false, texto: "MAXIMA\nAPUESTA" },
+  ];
+  const xsArriba = [123, 290, 457, 622, 790];
+  const xsAbajo = [123, 292, 460, 625, 792];
+  const creditos = ["8", "18", "38", "68", "88"];
+  const giros = ["X1", "X2", "X3", "X6", "X10"];
+  for (let i = 0; i < 5; i++) {
+    celdas.push({ id: `simbolo${i + 1}`, x: xsArriba[i], y: 17, w: 157, h: 111, layout: "simbolo", borde: true,
+      top: "SIMBOLO\nDE ORO", numero: String(i + 1), bottom: `${creditos[i]} CREDITOS` });
+    celdas.push({ id: `juegue${i + 1}`, x: xsAbajo[i], y: 138, w: 157, h: 110, layout: "juegue", borde: true,
+      top: "JUEGUE", numero: giros[i], bottom: "POR GIRO" });
+  }
+  return celdas;
+})();
+
+// Texto/tamaño efectivo de una celda: lo guardado por el usuario pisa los
+// valores originales; el tamaño es un multiplicador (1 = tamaño original).
+function panelValoresCelda(celda, guardado) {
+  const g = guardado || {};
+  const slots = celda.layout === "texto" ? ["texto"] : ["top", "numero", "bottom"];
+  const v = {};
+  slots.forEach((s) => {
+    v[s] = { texto: g[s] != null ? g[s] : celda[s], tam: g[`tam_${s}`] != null ? g[`tam_${s}`] : 1 };
+  });
+  return v;
 }
 
 // Parsea "1, 2, 3, 5, 10" -> [1,2,3,5,10] (ignora vacíos y no-números).

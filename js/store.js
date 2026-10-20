@@ -15,20 +15,27 @@ const Store = (function () {
       config: { margenMm: 1.2, ultimoUsado: _ultimoUsadoDefault() },
       logos: {}, // { [logoId]: dataURL }
       plantillas: [], // { id, nombre, w, h, forma, radioMm } - tamaños con nombre (ej: "MK6", "BB1")
+      panel: { celdas: {} }, // solo lo editable del panel fijo: { [celdaId]: { top, tam_top, numero, ... } }
       hojaActualId: hojaId,
       hojas: [{ id: hojaId, nombre: "Hoja 1", botones: [] }],
     };
   }
 
+  // Completa config/ultimoUsado/plantillas/panel si vienen de una versión
+  // anterior (o de un JSON importado) sin esos campos.
+  function _completar(estado) {
+    estado.config = { ..._defaults().config, ...estado.config };
+    estado.config.ultimoUsado = { ..._ultimoUsadoDefault(), ...estado.config.ultimoUsado };
+    estado.plantillas = estado.plantillas || [];
+    estado.panel = estado.panel || {};
+    estado.panel.celdas = estado.panel.celdas || {};
+    return estado;
+  }
+
   function _leer() {
     try {
       const raw = localStorage.getItem(KEY);
-      const estado = raw ? JSON.parse(raw) : _defaults();
-      // Completa config/ultimoUsado/plantillas si viene de una versión anterior sin esos campos.
-      estado.config = { ..._defaults().config, ...estado.config };
-      estado.config.ultimoUsado = { ..._ultimoUsadoDefault(), ...estado.config.ultimoUsado };
-      estado.plantillas = estado.plantillas || [];
-      return estado;
+      return _completar(raw ? JSON.parse(raw) : _defaults());
     } catch (e) {
       return _defaults();
     }
@@ -182,6 +189,29 @@ const Store = (function () {
     return _guardar(_estado);
   }
 
+  // Panel fijo: solo se guardan textos y tamaños por celda; null borra el
+  // valor guardado (vuelve al original).
+  function panelCelda(id) {
+    return _estado.panel.celdas[id] || {};
+  }
+
+  function actualizarPanelCelda(id, cambios) {
+    const actual = { ...(_estado.panel.celdas[id] || {}) };
+    Object.entries(cambios).forEach(([k, v]) => {
+      if (v === null) delete actual[k];
+      else actual[k] = v;
+    });
+    if (Object.keys(actual).length) _estado.panel.celdas[id] = actual;
+    else delete _estado.panel.celdas[id];
+    return _guardar(_estado);
+  }
+
+  function reiniciarPanel(id) {
+    if (id) delete _estado.panel.celdas[id];
+    else _estado.panel.celdas = {};
+    return _guardar(_estado);
+  }
+
   function exportarJSON() {
     return JSON.stringify(_estado, null, 2);
   }
@@ -199,7 +229,7 @@ const Store = (function () {
       return _estado;
     }
     if (modo === "reemplazar") {
-      _estado = nuevo;
+      _estado = _completar(nuevo);
     } else {
       // agregar: mete las hojas nuevas y sus logos, sin pisar lo existente
       nuevo.hojas.forEach((h) => _estado.hojas.push(h));
@@ -215,6 +245,7 @@ const Store = (function () {
     agregarBoton, actualizarBoton, eliminarBoton, duplicarBoton,
     agregarLogo, eliminarLogosNoUsados,
     guardarPlantilla, eliminarPlantilla,
+    panelCelda, actualizarPanelCelda, reiniciarPanel,
     exportarJSON, importarJSON,
   };
 })();
