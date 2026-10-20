@@ -25,6 +25,10 @@ function router() {
   // Supr/Backspace borra el botón (o grupo) seleccionado, salvo que el foco
   // esté en un campo de texto (ahí Backspace debe borrar caracteres, no botones).
   window.addEventListener("keydown", (e) => {
+    if (location.hash === "#/panel") {
+      if (e.key === "Escape") { document.activeElement?.blur?.(); return; }
+      if (e.key.startsWith("Arrow")) { _panelFlechas(e); return; }
+    }
     if (e.key !== "Delete" && e.key !== "Backspace") return;
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;

@@ -1001,6 +1001,7 @@ function _enlazarFormEditarGrupo(grupoId) {
 // ---------- Pestaña "Panel" (diseño fijo; solo textos y tamaño de letra) ----------
 
 let _panelSel = null; // id de la celda seleccionada en el panel
+let _panelMover = "celda"; // qué mueven las flechas: "celda" (todo el botón) o el nombre de un texto
 let _zoomPanel = 0.9;
 
 function vistaPanel() {
@@ -1072,15 +1073,17 @@ function _panelCeldaHTML(c) {
   const v = panelValoresCelda(c, Store.panelCelda(c.id));
   const anchoCara = c.cara ? c.cara[2] : c.w;
   const caraX = c.cara ? c.cara[0] : 0;
+  const guardado = Store.panelCelda(c.id);
   const textos = Object.keys(c.slots).map((slot) => {
     const def = c.slots[slot];
     const s = v[slot];
     if (!String(s.texto).trim()) return "";
+    const sdx = guardado[`dx_${slot}`] || 0, sdy = guardado[`dy_${slot}`] || 0;
     const sx = def.sx || 1;
     const centrado = def.ax === "c";
     const pos = [
-      centrado ? `left:calc(50% + ${(def.ox * u).toFixed(3)}mm)` : `left:${(def.ox * u).toFixed(3)}mm`,
-      def.ay === "b" ? `bottom:${(def.oy * u).toFixed(3)}mm` : def.ay === "m" ? `top:calc(50% + ${(def.oy * u).toFixed(3)}mm)` : `top:${(def.oy * u).toFixed(3)}mm`,
+      centrado ? `left:calc(50% + ${((def.ox + sdx) * u).toFixed(3)}mm)` : `left:${((def.ox + sdx) * u).toFixed(3)}mm`,
+      def.ay === "b" ? `bottom:${((def.oy - sdy) * u).toFixed(3)}mm` : def.ay === "m" ? `top:calc(50% + ${((def.oy + sdy) * u).toFixed(3)}mm)` : `top:${((def.oy + sdy) * u).toFixed(3)}mm`,
     ].join(";");
     const disponible = centrado ? anchoCara : c.w - caraX - def.ox;
     const transform = `translate(${centrado ? "-50%" : "0"},${def.ay === "m" ? "-50%" : "0"})${sx !== 1 ? ` scaleX(${sx})` : ""}`;
@@ -1105,7 +1108,8 @@ function _panelAjustar(el) {
 
 function _panelEstiloCelda(c) {
   const u = PANEL_MM_POR_PX;
-  return `left:${(c.x * u).toFixed(3)}mm;top:${(c.y * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
+  const g = Store.panelCelda(c.id);
+  return `left:${((c.x + (g.dx || 0)) * u).toFixed(3)}mm;top:${((c.y + (g.dy || 0)) * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
 }
 
 // Líneas doradas exteriores del panel con un adorno cuadrado en cada esquina.
@@ -1172,7 +1176,12 @@ function _renderPanelLateral() {
         : `<input id="p-${slot}" type="text" value="${esc(v[slot].texto)}">`}</label>
       <label class="campo">Tamaño de la letra <span class="valor-slider" id="p-tam-val-${slot}">${Math.round(v[slot].tam * 100)}%</span>
         <input id="p-tam-${slot}" type="range" min="30" max="200" step="5" value="${Math.round(v[slot].tam * 100)}"></label>`).join("")
-      + `<button class="btn sm sec" id="p-restaurar">Restaurar este botón</button></div>`;
+      + `<label class="campo">Mover con las flechas del teclado
+          <select id="p-mover"><option value="celda">Todo el botón</option>${slots.map((sl) => `<option value="${sl}">${etiquetas[sl]}</option>`).join("")}</select></label>
+        <div class="muted" style="font-size:12px" id="p-mover-info"></div>
+        <button class="btn sm sec" id="p-mover-reset">Restablecer posición</button>
+        <p class="muted" style="font-size:12px;margin:0">Flechas: 1 px · Shift + flechas: 5 px. Si el cursor está en un campo, haz clic en el panel o pulsa Esc primero.</p>
+        <button class="btn sm sec" id="p-restaurar">Restaurar este botón</button></div>`;
   }
   cont.innerHTML = `<h3>Panel</h3>${selector}${form}`;
 
@@ -1198,7 +1207,68 @@ function _renderPanelLateral() {
   });
   document.getElementById("p-restaurar").onclick = () => {
     S = Store.reiniciarPanel(c.id);
+    _panelAplicarPosicion(c.id);
     _pintarPanelCelda(c.id);
     _renderPanelLateral();
   };
+  if (_panelMover !== "celda" && !c.slots[_panelMover]) _panelMover = "celda";
+  const selMover = document.getElementById("p-mover");
+  selMover.value = _panelMover;
+  selMover.onchange = (e) => { _panelMover = e.target.value; _panelInfoMover(c); e.target.blur(); };
+  document.getElementById("p-mover-reset").onclick = () => {
+    const claves = _panelMover === "celda" ? { dx: null, dy: null } : { [`dx_${_panelMover}`]: null, [`dy_${_panelMover}`]: null };
+    S = Store.actualizarPanelCelda(c.id, claves);
+    _panelAplicarPosicion(c.id);
+    _pintarPanelCelda(c.id);
+    _panelInfoMover(c);
+  };
+  cont.querySelectorAll('input[type="range"]').forEach((r) => { r.onchange = () => r.blur(); });
+  _panelInfoMover(c);
+}
+
+function _panelInfoMover(c) {
+  const el = document.getElementById("p-mover-info");
+  if (!el) return;
+  const g = Store.panelCelda(c.id);
+  const dx = _panelMover === "celda" ? g.dx || 0 : g[`dx_${_panelMover}`] || 0;
+  const dy = _panelMover === "celda" ? g.dy || 0 : g[`dy_${_panelMover}`] || 0;
+  const mm = (v) => (v * PANEL_MM_POR_PX).toFixed(1).replace(".", ",");
+  const sg = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
+  el.textContent = `Desplazamiento: X ${sg(dx)} px (${mm(dx)} mm), Y ${sg(dy)} px (${mm(dy)} mm)`;
+}
+
+// Aplica al DOM la posición (con desplazamiento) de un botón sin re-renderizarlo.
+function _panelAplicarPosicion(id) {
+  const c = PANEL_CELDAS.find((x) => x.id === id);
+  const el = document.querySelector(`.panel-celda[data-id="${id}"]`);
+  if (!c || !el) return;
+  const g = Store.panelCelda(id);
+  const u = PANEL_MM_POR_PX;
+  el.style.left = `${((c.x + (g.dx || 0)) * u).toFixed(3)}mm`;
+  el.style.top = `${((c.y + (g.dy || 0)) * u).toFixed(3)}mm`;
+}
+
+// Flechas del teclado: mueven el botón seleccionado (o uno de sus textos).
+function _panelFlechas(e) {
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const c = PANEL_CELDAS.find((x) => x.id === _panelSel);
+  if (!c) return;
+  e.preventDefault();
+  const paso = e.shiftKey ? 5 : 1;
+  const ddx = e.key === "ArrowLeft" ? -paso : e.key === "ArrowRight" ? paso : 0;
+  const ddy = e.key === "ArrowUp" ? -paso : e.key === "ArrowDown" ? paso : 0;
+  if (!ddx && !ddy) return;
+  const g = Store.panelCelda(c.id);
+  if (_panelMover === "celda" || !c.slots[_panelMover]) {
+    const dx = clamp((g.dx || 0) + ddx, -c.x, PANEL_REF_W - c.w - c.x);
+    const dy = clamp((g.dy || 0) + ddy, -c.y, PANEL_REF_H - c.h - c.y);
+    S = Store.actualizarPanelCelda(c.id, { dx, dy });
+    _panelAplicarPosicion(c.id);
+  } else {
+    const kx = `dx_${_panelMover}`, ky = `dy_${_panelMover}`;
+    S = Store.actualizarPanelCelda(c.id, { [kx]: (g[kx] || 0) + ddx, [ky]: (g[ky] || 0) + ddy });
+    _pintarPanelCelda(c.id);
+  }
+  _panelInfoMover(c);
 }
