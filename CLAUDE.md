@@ -17,7 +17,7 @@ todo el estado vive en `localStorage` (ver `js/store.js`). Versionado: subir
   No toca el DOM.
 - `js/vistas.js`: funciones `vistaX()` que arman `app.innerHTML` y enganchan sus
   propios listeners después de renderizar.
-- Pestaña `#/panel` (`vistaPanel()` en `js/vistas.js`): réplica de un panel de botones con diseño FIJO en código (`PANEL_CELDAS` en `js/core.js`; geometría, colores y posiciones de texto medidos contra la imagen del diseño esperado, marcos y fondo dibujados en SVG/CSS; la letra es DejaVu Sans Bold embebida en `fonts/`). El usuario edita textos, tamaño de letra y posición (flechas del teclado: todo el botón o cada texto, `dx/dy` en px de referencia); eso es lo único que guarda `Store` (`panel.celdas`). Imprime en carta horizontal vía `@page panel`.
+- Pestaña `#/panel` (`vistaPanel()` en `js/vistas.js`): réplica de un panel de botones con diseño FIJO en código (`PANEL_CELDAS` en `js/core.js`; geometría, colores y posiciones de texto medidos contra la imagen del diseño esperado, marcos y fondo dibujados en SVG/CSS; la letra es DejaVu Sans Bold embebida en `fonts/`). El usuario edita textos, tamaño de letra, posición (flechas del teclado: todo el botón o cada texto, `dx/dy` en px de referencia), tamaño de cada botón (`dw/dh`, Ctrl+flechas o campos en mm) y tamaño del panel completo (`panel.anchoMm/altoMm`, con o sin proporción); eso es lo único que guarda `Store` (`panel.celdas`). Imprime en carta horizontal vía `@page panel`.
 - `js/app.js`: arranque (`start()`), router por hash (`router()`, un solo listener
   de `hashchange`), navegación.
 

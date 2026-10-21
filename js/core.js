@@ -1,7 +1,7 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.13.0";
+const APP_VERSION = "0.14.0";
 
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
@@ -306,6 +306,38 @@ const PANEL_CELDAS = (function () {
   celdas.forEach((c) => Object.entries(ajustes[c.id] || {}).forEach(([k, a]) => Object.assign(c.slots[k], a)));
   return celdas;
 })();
+
+// Escala del panel: mm por px de referencia en cada eje (el panel puede
+// agrandarse/achicarse, con o sin mantener la proporción) y la de las letras.
+function panelEscala(cfg) {
+  const aMm = (cfg && cfg.anchoMm) || PANEL_ANCHO_MM;
+  const hMm = (cfg && cfg.altoMm) || (PANEL_ANCHO_MM * PANEL_REF_H) / PANEL_REF_W;
+  const ux = aMm / PANEL_REF_W, uy = hMm / PANEL_REF_H;
+  return { aMm, hMm, ux, uy, uf: Math.min(ux, uy) };
+}
+
+// Tamaño mínimo de un botón con marco (para que le quede cara útil).
+function panelMinimo(c) {
+  const k = 2 * (c.m + PANEL_BARRA);
+  return { w: k + 24, h: k + 16 };
+}
+
+// Geometría efectiva de una celda (px de referencia): posición y tamaño
+// originales + lo que el usuario movió (dx, dy) o redimensionó (dw, dh, que
+// crece o se achica alrededor del centro del botón).
+function panelGeom(c, g) {
+  g = g || {};
+  let w = c.w, h = c.h;
+  if (c.cara) {
+    const min = panelMinimo(c);
+    w = clamp(c.w + (g.dw || 0), min.w, PANEL_REF_W - 20);
+    h = clamp(c.h + (g.dh || 0), min.h, PANEL_REF_H - 20);
+  }
+  const x = c.x + (g.dx || 0) - (w - c.w) / 2;
+  const y = c.y + (g.dy || 0) - (h - c.h) / 2;
+  const k = c.cara ? c.m + PANEL_BARRA : 0;
+  return { x, y, w, h, cara: c.cara ? [k, k, w - 2 * k, h - 2 * k] : null };
+}
 
 // Texto/tamaño efectivo de una celda: lo guardado por el usuario pisa los
 // valores originales; el tamaño es un multiplicador (1 = tamaño original).

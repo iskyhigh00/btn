@@ -998,46 +998,60 @@ function _enlazarFormEditarGrupo(grupoId) {
   });
 }
 
-// ---------- Pestaña "Panel" (diseño fijo; solo textos y tamaño de letra) ----------
+// ---------- Pestaña "Panel" (diseño fijo; textos, tamaños y posiciones editables) ----------
 
 let _panelSel = null; // id de la celda seleccionada en el panel
 let _panelMover = "celda"; // qué mueven las flechas: "celda" (todo el botón) o el nombre de un texto
 let _zoomPanel = 0.9;
 
+function _panelCelda(id) {
+  return PANEL_CELDAS.find((x) => x.id === id);
+}
+
 function vistaPanel() {
   _seleccion = new Set(); // evita que Supr borre botones de la otra pestaña
-  if (!PANEL_CELDAS.some((c) => c.id === _panelSel)) _panelSel = null;
-  const u = PANEL_MM_POR_PX;
+  if (!_panelCelda(_panelSel)) _panelSel = null;
+  const e = panelEscala(Store.panelConfig());
   app.innerHTML = `
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
         <div class="aviso-impresion">⚠️ Al imprimir: <b>Orientación = Horizontal</b>, <b>Márgenes = Ninguno</b> y <b>Escala = 100% / Tamaño real</b> (no "Ajustar"). El navegador no deja preseleccionar esto desde la página, revísalo en el diálogo de impresión.</div>
         <div class="lienzo-toolbar card">
-          <span class="muted">Diseño fijo: solo se pueden cambiar los textos y su tamaño.</span>
+          <span class="muted">Textos, tamaños y posiciones editables; flechas del teclado para mover.</span>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom-panel" min="0.3" max="1.3" step="0.05" value="${_zoomPanel}"></label>
           <button class="btn sm sec" id="btn-panel-reiniciar">Restaurar todo</button>
           <button class="btn" id="btn-panel-imprimir" title="Orientación: Horizontal · Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
         <div class="lienzo-scroll">
-          <div class="panel-hoja" id="panel-hoja" style="width:${(PANEL_REF_W * u).toFixed(3)}mm;height:${(PANEL_REF_H * u).toFixed(3)}mm;--u:${u.toFixed(5)}mm;transform:scale(${_zoomPanel})"></div>
+          <div class="panel-hoja" id="panel-hoja" style="width:${e.aMm.toFixed(3)}mm;height:${e.hMm.toFixed(3)}mm;--u:${e.uf.toFixed(5)}mm;transform:scale(${_zoomPanel})"></div>
         </div>
       </section>
     </div>`;
   _renderPanelHoja();
   _renderPanelLateral();
-  document.getElementById("zoom-panel").oninput = (e) => {
-    _zoomPanel = Number(e.target.value);
+  document.getElementById("zoom-panel").oninput = (ev) => {
+    _zoomPanel = Number(ev.target.value);
     document.getElementById("panel-hoja").style.transform = `scale(${_zoomPanel})`;
   };
   document.getElementById("btn-panel-reiniciar").onclick = () => {
-    if (!confirm("¿Restaurar todos los textos y tamaños del panel a los originales?")) return;
+    if (!confirm("¿Restaurar todos los textos, tamaños y posiciones del panel a los originales?")) return;
     S = Store.reiniciarPanel();
+    _panelAplicarTamano();
     _renderPanelHoja();
     _renderPanelLateral();
   };
   document.getElementById("btn-panel-imprimir").onclick = () => window.print();
+}
+
+// Tamaño del panel completo (caja + patrón de fondo) según lo guardado.
+function _panelAplicarTamano() {
+  const e = panelEscala(Store.panelConfig());
+  const hoja = document.getElementById("panel-hoja");
+  hoja.style.width = `${e.aMm.toFixed(3)}mm`;
+  hoja.style.height = `${e.hMm.toFixed(3)}mm`;
+  hoja.style.setProperty("--u", `${e.uf.toFixed(5)}mm`);
 }
 
 function _panelLineas(t) {
@@ -1046,34 +1060,36 @@ function _panelLineas(t) {
 
 // Marco de un botón (SVG a la medida exacta de su caja): placa amarilla a
 // naranja, anillo rojo, cara azul (o roja) y barras naranjas que sobresalen.
-function _panelMarcoSVG(c) {
-  const B = PANEL_BARRA, m = c.m, w = c.w, h = c.h;
+function _panelMarcoSVG(c, geo) {
+  const B = PANEL_BARRA, w = geo.w, h = geo.h;
   const pw = w - 2 * B, ph = h - 2 * B;
-  const [fx, fy, fw, fh] = c.cara;
+  const [fx, fy, fw, fh] = geo.cara;
   const g = `m${c.id}`;
   const bw = Math.round(pw * 0.67), bh = Math.round(ph * 0.63), sol = c.solape;
-  const barra = (x, y, bw2, bh2) => `<rect x="${x + 0.5}" y="${y + 0.5}" width="${bw2 - 1}" height="${bh2 - 1}" fill="#ff8000" stroke="#892500" stroke-width="1"/>`;
-  const cx = Math.round((w - bw) / 2), cy = Math.round((h - bh) / 2);
-  return `<svg class="panel-marco" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+  const r = (n) => Math.round(n * 100) / 100;
+  const barra = (x, y, bw2, bh2) => `<rect x="${r(x + 0.5)}" y="${r(y + 0.5)}" width="${r(bw2 - 1)}" height="${r(bh2 - 1)}" fill="#ff8000" stroke="#892500" stroke-width="1"/>`;
+  const cx = (w - bw) / 2, cy = (h - bh) / 2;
+  return `<svg class="panel-marco" viewBox="0 0 ${r(w)} ${r(h)}" preserveAspectRatio="none" aria-hidden="true">
     <defs>
       <linearGradient id="${g}p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe600"/><stop offset=".3" stop-color="#ffb000"/><stop offset=".7" stop-color="#ff8000"/><stop offset="1" stop-color="#ff8000"/></linearGradient>
       <linearGradient id="${g}f" x1="0" y1="0" x2="0" y2="1">${c.rojo
         ? '<stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#d80000"/>'
         : '<stop offset="0" stop-color="#007bff"/><stop offset="1" stop-color="#0029ff"/>'}</linearGradient>
     </defs>
-    <rect x="${B + 0.5}" y="${B + 0.5}" width="${pw - 1}" height="${ph - 1}" fill="url(#${g}p)" stroke="#892500" stroke-width="1"/>
+    <rect x="${B + 0.5}" y="${B + 0.5}" width="${r(pw - 1)}" height="${r(ph - 1)}" fill="url(#${g}p)" stroke="#892500" stroke-width="1"/>
     ${barra(cx, sol, bw, B)}${barra(cx, h - B - sol, bw, B)}${barra(sol, cy, B, bh)}${barra(w - B - sol, cy, B, bh)}
-    <rect x="${fx - 3}" y="${fy - 3}" width="${fw + 6}" height="${fh + 6}" fill="#f00000" stroke="#a00000" stroke-width=".8"/>
-    <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="url(#${g}f)"/>
+    <rect x="${r(fx - 3)}" y="${r(fy - 3)}" width="${r(fw + 6)}" height="${r(fh + 6)}" fill="#f00000" stroke="#a00000" stroke-width=".8"/>
+    <rect x="${fx}" y="${fy}" width="${r(fw)}" height="${r(fh)}" fill="url(#${g}f)"/>
   </svg>`;
 }
 
 function _panelCeldaHTML(c) {
-  const u = PANEL_MM_POR_PX;
-  const v = panelValoresCelda(c, Store.panelCelda(c.id));
-  const anchoCara = c.cara ? c.cara[2] : c.w;
-  const caraX = c.cara ? c.cara[0] : 0;
+  const e = panelEscala(Store.panelConfig());
   const guardado = Store.panelCelda(c.id);
+  const geo = panelGeom(c, guardado);
+  const v = panelValoresCelda(c, guardado);
+  const anchoCara = geo.cara ? geo.cara[2] : geo.w;
+  const caraX = geo.cara ? geo.cara[0] : 0;
   const textos = Object.keys(c.slots).map((slot) => {
     const def = c.slots[slot];
     const s = v[slot];
@@ -1081,16 +1097,17 @@ function _panelCeldaHTML(c) {
     const sdx = guardado[`dx_${slot}`] || 0, sdy = guardado[`dy_${slot}`] || 0;
     const sx = def.sx || 1;
     const centrado = def.ax === "c";
+    const hx = (n) => (n * e.ux).toFixed(3), vy = (n) => (n * e.uy).toFixed(3);
     const pos = [
-      centrado ? `left:calc(50% + ${((def.ox + sdx) * u).toFixed(3)}mm)` : `left:${((def.ox + sdx) * u).toFixed(3)}mm`,
-      def.ay === "b" ? `bottom:${((def.oy - sdy) * u).toFixed(3)}mm` : def.ay === "m" ? `top:calc(50% + ${((def.oy + sdy) * u).toFixed(3)}mm)` : `top:${((def.oy + sdy) * u).toFixed(3)}mm`,
+      centrado ? `left:calc(50% + ${hx(def.ox + sdx)}mm)` : `left:${hx(def.ox + sdx)}mm`,
+      def.ay === "b" ? `bottom:${vy(def.oy - sdy)}mm` : def.ay === "m" ? `top:calc(50% + ${vy(def.oy + sdy)}mm)` : `top:${vy(def.oy + sdy)}mm`,
     ].join(";");
-    const disponible = centrado ? anchoCara : c.w - caraX - def.ox;
+    const disponible = centrado ? anchoCara : geo.w - caraX - def.ox;
     const transform = `translate(${centrado ? "-50%" : "0"},${def.ay === "m" ? "-50%" : "0"})${sx !== 1 ? ` scaleX(${sx})` : ""}`;
     const origen = `${centrado ? "50%" : "0"} ${def.ay === "m" ? "50%" : def.ay === "b" ? "100%" : "0"}`;
-    return `<div class="panel-txt rol-${def.rol}" data-slot="${slot}" style="${pos};font-size:${(def.base * s.tam * u).toFixed(3)}mm;line-height:${def.lh};max-width:${((disponible / sx) * u).toFixed(3)}mm;text-align:${centrado ? "center" : "left"};transform:${transform};transform-origin:${origen}">${_panelLineas(s.texto)}</div>`;
+    return `<div class="panel-txt rol-${def.rol}" data-slot="${slot}" style="${pos};font-size:${(def.base * s.tam * e.uf).toFixed(3)}mm;line-height:${def.lh};max-width:${((disponible / sx) * e.ux).toFixed(3)}mm;text-align:${centrado ? "center" : "left"};transform:${transform};transform-origin:${origen}">${_panelLineas(s.texto)}</div>`;
   }).join("");
-  return (c.sinMarco ? "" : _panelMarcoSVG(c)) + textos;
+  return (c.sinMarco ? "" : _panelMarcoSVG(c, geo)) + textos;
 }
 
 // Si un texto no entra en el ancho de su botón, achica la letra hasta que quepa.
@@ -1107,9 +1124,9 @@ function _panelAjustar(el) {
 }
 
 function _panelEstiloCelda(c) {
-  const u = PANEL_MM_POR_PX;
-  const g = Store.panelCelda(c.id);
-  return `left:${((c.x + (g.dx || 0)) * u).toFixed(3)}mm;top:${((c.y + (g.dy || 0)) * u).toFixed(3)}mm;width:${(c.w * u).toFixed(3)}mm;height:${(c.h * u).toFixed(3)}mm`;
+  const e = panelEscala(Store.panelConfig());
+  const geo = panelGeom(c, Store.panelCelda(c.id));
+  return `left:${(geo.x * e.ux).toFixed(3)}mm;top:${(geo.y * e.uy).toFixed(3)}mm;width:${(geo.w * e.ux).toFixed(3)}mm;height:${(geo.h * e.uy).toFixed(3)}mm`;
 }
 
 // Líneas doradas exteriores del panel con un adorno cuadrado en cada esquina.
@@ -1141,18 +1158,30 @@ function _renderPanelHoja() {
   });
 }
 
+// Repinta el contenido (marco y textos) de un botón.
 function _pintarPanelCelda(id) {
-  const c = PANEL_CELDAS.find((x) => x.id === id);
+  const c = _panelCelda(id);
   const el = document.querySelector(`.panel-celda[data-id="${id}"]`);
   if (!c || !el) return;
   el.innerHTML = _panelCeldaHTML(c);
   _panelAjustar(el);
 }
 
+// Posición y tamaño de la caja de un botón, y su contenido, sin tocar el resto.
+function _panelRepintarCelda(id) {
+  const c = _panelCelda(id);
+  const el = document.querySelector(`.panel-celda[data-id="${id}"]`);
+  if (!c || !el) return;
+  el.setAttribute("style", _panelEstiloCelda(c));
+  _pintarPanelCelda(id);
+}
+
 function _panelEtiqueta(c) {
   const s = c.slots.numero || c.slots.texto;
   return s.texto.replace(/\n/g, " ");
 }
+
+const _MM = (n) => (Math.round(n * 10) / 10).toString().replace(".", ",");
 
 function _renderPanelLateral() {
   const cont = document.getElementById("panel");
@@ -1163,8 +1192,18 @@ function _renderPanelLateral() {
     + chips("Fila de abajo", PANEL_CELDAS.filter((c) => c.id.startsWith("juegue")))
     + chips("Otros", PANEL_CELDAS.filter((c) => c.slots.texto));
 
-  const c = PANEL_CELDAS.find((x) => x.id === _panelSel);
-  let form = `<p class="muted" style="font-size:12px">Haz clic en un botón del panel (o aquí) para cambiar su texto y el tamaño de la letra. El resto del diseño es fijo.</p>`;
+  const tamanoPanel = `
+    <h4>Tamaño del panel</h4>
+    <div class="fila-2">
+      <label class="campo">Ancho (mm)<input id="pn-ancho" type="number" min="40" max="600" step="0.5"></label>
+      <label class="campo">Alto (mm)<input id="pn-alto" type="number" min="10" max="400" step="0.5"></label>
+    </div>
+    <label class="campo" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="pn-prop" style="width:auto"> Mantener proporción</label>
+    <div class="muted" style="font-size:12px" id="pn-aviso"></div>
+    <button class="btn sm sec" id="pn-reset">Tamaño original del panel</button>`;
+
+  const c = _panelCelda(_panelSel);
+  let form = `<p class="muted" style="font-size:12px">Haz clic en un botón del panel (o aquí) para editar su texto, tamaño y posición.</p>`;
   if (c) {
     const v = panelValoresCelda(c, Store.panelCelda(c.id));
     const etiquetas = { texto: "Texto", top: "Texto de arriba", numero: "Número / texto grande", bottom: "Texto de abajo" };
@@ -1176,14 +1215,22 @@ function _renderPanelLateral() {
         : `<input id="p-${slot}" type="text" value="${esc(v[slot].texto)}">`}</label>
       <label class="campo">Tamaño de la letra <span class="valor-slider" id="p-tam-val-${slot}">${Math.round(v[slot].tam * 100)}%</span>
         <input id="p-tam-${slot}" type="range" min="30" max="200" step="5" value="${Math.round(v[slot].tam * 100)}"></label>`).join("")
-      + `<label class="campo">Mover con las flechas del teclado
+      + (c.cara ? `
+        <h4>Tamaño del botón</h4>
+        <div class="fila-2">
+          <label class="campo">Ancho (mm)<input id="b-ancho" type="number" min="5" max="200" step="0.5"></label>
+          <label class="campo">Alto (mm)<input id="b-alto" type="number" min="5" max="200" step="0.5"></label>
+        </div>
+        <button class="btn sm sec" id="b-reset">Tamaño original del botón</button>` : "")
+      + `<h4>Posición</h4>
+        <label class="campo">Mover con las flechas del teclado
           <select id="p-mover"><option value="celda">Todo el botón</option>${slots.map((sl) => `<option value="${sl}">${etiquetas[sl]}</option>`).join("")}</select></label>
         <div class="muted" style="font-size:12px" id="p-mover-info"></div>
         <button class="btn sm sec" id="p-mover-reset">Restablecer posición</button>
-        <p class="muted" style="font-size:12px;margin:0">Flechas: 1 px · Shift + flechas: 5 px. Si el cursor está en un campo, haz clic en el panel o pulsa Esc primero.</p>
+        <p class="muted" style="font-size:12px;margin:0">Flechas: 1 px · Shift + flechas: 5 px${c.cara ? " · Ctrl + flechas: cambian el tamaño del botón" : ""}. Si el cursor está en un campo, haz clic en el panel o pulsa Esc primero.</p>
         <button class="btn sm sec" id="p-restaurar">Restaurar este botón</button></div>`;
   }
-  cont.innerHTML = `<h3>Panel</h3>${selector}${form}`;
+  cont.innerHTML = `<h3>Panel</h3>${selector}${tamanoPanel}${form}`;
 
   cont.querySelectorAll("[data-sel]").forEach((b) => {
     b.onclick = () => {
@@ -1192,79 +1239,145 @@ function _renderPanelLateral() {
       _renderPanelLateral();
     };
   });
+
+  // --- tamaño del panel completo ---
+  const inA = document.getElementById("pn-ancho"), inH = document.getElementById("pn-alto"), inP = document.getElementById("pn-prop");
+  const refrescarPanel = () => {
+    const cfg = Store.panelConfig(), e = panelEscala(cfg);
+    if (document.activeElement !== inA) inA.value = _MM(e.aMm).replace(",", ".");
+    if (document.activeElement !== inH) inH.value = _MM(e.hMm).replace(",", ".");
+    inP.checked = cfg.proporcion;
+    const excede = e.aMm > HOJA_ALTO_MM - 12 || e.hMm > HOJA_ANCHO_MM - 7;
+    document.getElementById("pn-aviso").textContent = excede
+      ? `⚠️ Es más grande que una hoja carta horizontal (${_MM(HOJA_ALTO_MM)} × ${_MM(HOJA_ANCHO_MM)} mm): se cortará al imprimir.`
+      : `Original: ${_MM(PANEL_ANCHO_MM)} × ${_MM((PANEL_ANCHO_MM * PANEL_REF_H) / PANEL_REF_W)} mm.`;
+  };
+  const cambiarPanel = (campo) => {
+    const cfg = Store.panelConfig(), e = panelEscala(cfg);
+    const val = Number(campo === "a" ? inA.value : inH.value);
+    if (!(val > 0)) return;
+    const razon = e.hMm / e.aMm;
+    let aMm = campo === "a" ? val : cfg.proporcion ? val / razon : e.aMm;
+    let hMm = campo === "h" ? val : cfg.proporcion ? val * razon : e.hMm;
+    S = Store.actualizarPanelConfig({ anchoMm: Math.round(aMm * 100) / 100, altoMm: Math.round(hMm * 100) / 100 });
+    _panelAplicarTamano();
+    _renderPanelHoja();
+    refrescarPanel();
+  };
+  inA.oninput = () => cambiarPanel("a");
+  inH.oninput = () => cambiarPanel("h");
+  inP.onchange = () => { S = Store.actualizarPanelConfig({ proporcion: inP.checked }); };
+  document.getElementById("pn-reset").onclick = () => {
+    S = Store.actualizarPanelConfig({ anchoMm: null, altoMm: null });
+    _panelAplicarTamano();
+    _renderPanelHoja();
+    refrescarPanel();
+  };
+  refrescarPanel();
+
   if (!c) return;
   Object.keys(c.slots).forEach((slot) => {
-    document.getElementById(`p-${slot}`).oninput = (e) => {
-      S = Store.actualizarPanelCelda(c.id, { [slot]: e.target.value });
+    document.getElementById(`p-${slot}`).oninput = (ev) => {
+      S = Store.actualizarPanelCelda(c.id, { [slot]: ev.target.value });
       _pintarPanelCelda(c.id);
     };
-    document.getElementById(`p-tam-${slot}`).oninput = (e) => {
-      const tam = Number(e.target.value) / 100;
-      document.getElementById(`p-tam-val-${slot}`).textContent = `${e.target.value}%`;
+    document.getElementById(`p-tam-${slot}`).oninput = (ev) => {
+      const tam = Number(ev.target.value) / 100;
+      document.getElementById(`p-tam-val-${slot}`).textContent = `${ev.target.value}%`;
       S = Store.actualizarPanelCelda(c.id, { [`tam_${slot}`]: tam });
       _pintarPanelCelda(c.id);
     };
   });
   document.getElementById("p-restaurar").onclick = () => {
     S = Store.reiniciarPanel(c.id);
-    _panelAplicarPosicion(c.id);
-    _pintarPanelCelda(c.id);
+    _panelRepintarCelda(c.id);
     _renderPanelLateral();
   };
+
+  // --- tamaño del botón ---
+  if (c.cara) {
+    const bA = document.getElementById("b-ancho"), bH = document.getElementById("b-alto");
+    const cambiarBoton = () => {
+      const e = panelEscala(Store.panelConfig());
+      const ancho = Number(bA.value) / e.ux, alto = Number(bH.value) / e.uy;
+      if (!(ancho > 0) || !(alto > 0)) return;
+      S = Store.actualizarPanelCelda(c.id, { dw: Math.round((ancho - c.w) * 10) / 10, dh: Math.round((alto - c.h) * 10) / 10 });
+      _panelRepintarCelda(c.id);
+    };
+    bA.oninput = cambiarBoton;
+    bH.oninput = cambiarBoton;
+    document.getElementById("b-reset").onclick = () => {
+      S = Store.actualizarPanelCelda(c.id, { dw: null, dh: null });
+      _panelRepintarCelda(c.id);
+      _panelInfoTamano(c);
+    };
+  }
+
   if (_panelMover !== "celda" && !c.slots[_panelMover]) _panelMover = "celda";
   const selMover = document.getElementById("p-mover");
   selMover.value = _panelMover;
-  selMover.onchange = (e) => { _panelMover = e.target.value; _panelInfoMover(c); e.target.blur(); };
+  selMover.onchange = (ev) => { _panelMover = ev.target.value; _panelInfoMover(c); ev.target.blur(); };
   document.getElementById("p-mover-reset").onclick = () => {
     const claves = _panelMover === "celda" ? { dx: null, dy: null } : { [`dx_${_panelMover}`]: null, [`dy_${_panelMover}`]: null };
     S = Store.actualizarPanelCelda(c.id, claves);
-    _panelAplicarPosicion(c.id);
-    _pintarPanelCelda(c.id);
+    _panelRepintarCelda(c.id);
     _panelInfoMover(c);
   };
   cont.querySelectorAll('input[type="range"]').forEach((r) => { r.onchange = () => r.blur(); });
   _panelInfoMover(c);
+  _panelInfoTamano(c);
+}
+
+// Muestra en los campos el tamaño actual del botón (en mm).
+function _panelInfoTamano(c) {
+  const bA = document.getElementById("b-ancho"), bH = document.getElementById("b-alto");
+  if (!bA || !bH) return;
+  const e = panelEscala(Store.panelConfig());
+  const geo = panelGeom(c, Store.panelCelda(c.id));
+  if (document.activeElement !== bA) bA.value = (Math.round(geo.w * e.ux * 10) / 10).toString();
+  if (document.activeElement !== bH) bH.value = (Math.round(geo.h * e.uy * 10) / 10).toString();
 }
 
 function _panelInfoMover(c) {
   const el = document.getElementById("p-mover-info");
   if (!el) return;
+  const e = panelEscala(Store.panelConfig());
   const g = Store.panelCelda(c.id);
   const dx = _panelMover === "celda" ? g.dx || 0 : g[`dx_${_panelMover}`] || 0;
   const dy = _panelMover === "celda" ? g.dy || 0 : g[`dy_${_panelMover}`] || 0;
-  const mm = (v) => (v * PANEL_MM_POR_PX).toFixed(1).replace(".", ",");
   const sg = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
-  el.textContent = `Desplazamiento: X ${sg(dx)} px (${mm(dx)} mm), Y ${sg(dy)} px (${mm(dy)} mm)`;
+  el.textContent = `Desplazamiento: X ${sg(dx)} px (${_MM(dx * e.ux)} mm), Y ${sg(dy)} px (${_MM(dy * e.uy)} mm)`;
 }
 
-// Aplica al DOM la posición (con desplazamiento) de un botón sin re-renderizarlo.
-function _panelAplicarPosicion(id) {
-  const c = PANEL_CELDAS.find((x) => x.id === id);
-  const el = document.querySelector(`.panel-celda[data-id="${id}"]`);
-  if (!c || !el) return;
-  const g = Store.panelCelda(id);
-  const u = PANEL_MM_POR_PX;
-  el.style.left = `${((c.x + (g.dx || 0)) * u).toFixed(3)}mm`;
-  el.style.top = `${((c.y + (g.dy || 0)) * u).toFixed(3)}mm`;
-}
-
-// Flechas del teclado: mueven el botón seleccionado (o uno de sus textos).
-function _panelFlechas(e) {
+// Flechas del teclado: mueven el botón seleccionado (o uno de sus textos);
+// con Ctrl cambian el tamaño del botón. Shift = pasos de 5 px.
+function _panelFlechas(ev) {
   const tag = document.activeElement?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  const c = PANEL_CELDAS.find((x) => x.id === _panelSel);
+  const c = _panelCelda(_panelSel);
   if (!c) return;
-  e.preventDefault();
-  const paso = e.shiftKey ? 5 : 1;
-  const ddx = e.key === "ArrowLeft" ? -paso : e.key === "ArrowRight" ? paso : 0;
-  const ddy = e.key === "ArrowUp" ? -paso : e.key === "ArrowDown" ? paso : 0;
+  ev.preventDefault();
+  const paso = ev.shiftKey ? 5 : 1;
+  const ddx = ev.key === "ArrowLeft" ? -paso : ev.key === "ArrowRight" ? paso : 0;
+  const ddy = ev.key === "ArrowUp" ? -paso : ev.key === "ArrowDown" ? paso : 0;
   if (!ddx && !ddy) return;
   const g = Store.panelCelda(c.id);
+  if (ev.ctrlKey) {
+    if (!c.cara) return;
+    const min = panelMinimo(c);
+    const dw = clamp((g.dw || 0) + ddx, min.w - c.w, PANEL_REF_W - 20 - c.w);
+    const dh = clamp((g.dh || 0) + ddy, min.h - c.h, PANEL_REF_H - 20 - c.h);
+    S = Store.actualizarPanelCelda(c.id, { dw, dh });
+    _panelRepintarCelda(c.id);
+    _panelInfoTamano(c);
+    return;
+  }
   if (_panelMover === "celda" || !c.slots[_panelMover]) {
-    const dx = clamp((g.dx || 0) + ddx, -c.x, PANEL_REF_W - c.w - c.x);
-    const dy = clamp((g.dy || 0) + ddy, -c.y, PANEL_REF_H - c.h - c.y);
+    const geo = panelGeom(c, g);
+    const dx = clamp((g.dx || 0) + ddx, (g.dx || 0) - geo.x, (g.dx || 0) + PANEL_REF_W - geo.w - geo.x);
+    const dy = clamp((g.dy || 0) + ddy, (g.dy || 0) - geo.y, (g.dy || 0) + PANEL_REF_H - geo.h - geo.y);
     S = Store.actualizarPanelCelda(c.id, { dx, dy });
-    _panelAplicarPosicion(c.id);
+    _panelRepintarCelda(c.id);
   } else {
     const kx = `dx_${_panelMover}`, ky = `dy_${_panelMover}`;
     S = Store.actualizarPanelCelda(c.id, { [kx]: (g[kx] || 0) + ddx, [ky]: (g[ky] || 0) + ddy });

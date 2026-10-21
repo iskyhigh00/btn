@@ -208,7 +208,24 @@ const Store = (function () {
 
   function reiniciarPanel(id) {
     if (id) delete _estado.panel.celdas[id];
-    else _estado.panel.celdas = {};
+    else {
+      _estado.panel.celdas = {};
+      ["anchoMm", "altoMm", "proporcion"].forEach((k) => delete _estado.panel[k]);
+    }
+    return _guardar(_estado);
+  }
+
+  // Tamaño del panel completo (mm); sin valor guardado se usa el original.
+  function panelConfig() {
+    const p = _estado.panel;
+    return { anchoMm: p.anchoMm || null, altoMm: p.altoMm || null, proporcion: p.proporcion !== false };
+  }
+
+  function actualizarPanelConfig(cambios) {
+    Object.entries(cambios).forEach(([k, v]) => {
+      if (v === null) delete _estado.panel[k];
+      else _estado.panel[k] = v;
+    });
     return _guardar(_estado);
   }
 
@@ -245,7 +262,7 @@ const Store = (function () {
     agregarBoton, actualizarBoton, eliminarBoton, duplicarBoton,
     agregarLogo, eliminarLogosNoUsados,
     guardarPlantilla, eliminarPlantilla,
-    panelCelda, actualizarPanelCelda, reiniciarPanel,
+    panelCelda, actualizarPanelCelda, reiniciarPanel, panelConfig, actualizarPanelConfig,
     exportarJSON, importarJSON,
   };
 })();
