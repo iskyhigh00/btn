@@ -62,6 +62,8 @@ function vistaInicio() {
           <div class="barra-hoja">
             <button class="btn sm" id="btn-duplicar-seleccion" disabled>Duplicar selección</button>
             <button class="btn sm" id="btn-reorganizar">Reorganizar botones</button>
+            <button class="btn sm" id="btn-deshacer">Deshacer</button>
+            <button class="btn sm" id="btn-rehacer">Rehacer</button>
           </div>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
@@ -188,6 +190,18 @@ function _enlazarBibliotecaJuegos() {
 
 function _enlazarToolbar() {
   _enlazarBibliotecaJuegos();
+  for (const accion of ["deshacer", "rehacer"]) {
+    document.getElementById(`btn-${accion}`).onclick = () => {
+      const estado = Store[accion]();
+      if (!estado) return toast(`No hay cambios para ${accion}.`);
+      S = estado;
+      _seleccion = new Set();
+      document.getElementById("toasts").replaceChildren();
+      _renderSelectorHojas();
+      _renderHoja();
+      _renderPanel();
+    };
+  }
   document.getElementById("sel-hoja").onchange = (e) => {
     S = Store.setHojaActual(e.target.value);
     _seleccion = new Set();
