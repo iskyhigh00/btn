@@ -197,3 +197,49 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
   }
 }
 
+
+/* El eje del texto también cambia en la impresión. */
+.boton-print:is([data-orientacion="vertical"], [data-orientacion="vertical-inverso"], [data-orientacion="apilado"]) {
+  flex-direction: row;
+}
+.boton-print:is([data-orientacion="vertical"], [data-orientacion="vertical-inverso"], [data-orientacion="apilado"]) :is(.boton-linea, .boton-numero) {
+  writing-mode: vertical-rl;
+  text-orientation: sideways;
+  max-width: none;
+  max-height: 100%;
+  margin: 0;
+}
+.boton-print[data-orientacion="vertical"] { flex-direction: row-reverse; }
+.boton-print[data-orientacion="vertical-inverso"] :is(.boton-linea, .boton-numero) {
+  transform: rotate(180deg);
+}
+.boton-print[data-orientacion="apilado"] :is(.boton-linea, .boton-numero) {
+  text-orientation: upright;
+}
+@media screen {
+  .barra-hoja { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .menu-editor { position: relative; }
+  .menu-editor summary { list-style: none; }
+  .menu-editor summary::-webkit-details-marker { display: none; }
+  .menu-editor summary::after { content: " ▾"; }
+  .menu-editor-opciones {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 6px);
+    left: 0;
+    display: grid;
+    gap: 4px;
+    min-width: max-content;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    box-shadow: 0 12px 28px #06091180;
+  }
+  .menu-editor-opciones .btn { text-align: left; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  @media (max-width: 560px) {
+    .menu-editor-opciones { position: static; margin-top: 6px; }
+  }
+}
+
