@@ -124,3 +124,76 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
   .panel-celda.seleccionada{ outline:none }
   .boton-print.seleccionado{ outline:none }
 }
+
+/* Interfaz del editor en pantalla. Las medidas y reglas de impresión se conservan. */
+@media screen {
+  :root {
+    color-scheme: dark;
+    --bg: #0c0f17;
+    --card: #171d29;
+    --line: #344056;
+    --linesoft: #242e40;
+    --texto: #f3f5fc;
+    --muted: #b2bed1;
+    --accent: #a5b5ff;
+  }
+
+  body { background: radial-gradient(ellipse at top, #202946 0, var(--bg) 52rem); }
+  .topbar {
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px clamp(16px, 3vw, 42px);
+    background: #101521;
+  }
+  .brand { gap: 12px; }
+  .brand-logo { width: 38px; height: 38px; border-radius: 10px; }
+  .brand h1 { font-size: 19px; letter-spacing: -.025em; }
+  .version { margin-left: 4px; }
+  #nav { flex-wrap: wrap; }
+  .nav-link { padding: 8px 13px; }
+  .nav-link.activo { background: #273354; border-color: #43527a; color: #eef1ff; }
+  #app { padding: clamp(12px, 2.6vw, 36px); }
+  .editor { gap: clamp(12px, 2vw, 26px); }
+  .card { border-radius: 16px; padding: 16px; box-shadow: 0 12px 28px #06091147; }
+  .panel-lateral h3 { font-size: 18px; }
+  .panel-lateral h4 { color: var(--texto); font-size: 14px; }
+  .panel-form { gap: 11px; }
+  .campo { font-weight: 500; gap: 6px; }
+  .campo input, .campo select, .campo textarea, .fila-plantilla select, .lienzo-toolbar select {
+    background: #101624;
+    border-radius: 9px;
+    padding: 8px 10px;
+  }
+  .campo textarea { min-height: 66px; }
+  .campo input[type="color"] { padding: 2px; }
+  .campo input[type="checkbox"] { width: auto; margin: 0 6px 0 0; accent-color: var(--accent); }
+  .btn { background: #222c40; border-radius: 9px; font-weight: 600; }
+  .btn:hover { background: #313e59; }
+  .btn.sm { padding: 7px 9px; }
+  .btn.sec { background: transparent; }
+  #btn-nuevo-texto, #f-lista button[type="submit"], #btn-imprimir, #btn-panel-imprimir {
+    background: #b5c1ff;
+    color: #131d3d;
+    border-color: #c6d0ff;
+  }
+  #btn-nuevo-texto:hover, #f-lista button[type="submit"]:hover,
+  #btn-imprimir:hover, #btn-panel-imprimir:hover { background: #d1d8ff; }
+  :where(button, a, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .opciones-texto { border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
+  .opciones-texto summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+  .opciones-texto[open] .campo { margin-top: 10px; }
+  .lienzo-wrap { gap: 12px; }
+  .lienzo-toolbar { padding: 10px; }
+  .lienzo-scroll { background: #0b101a; border-radius: 16px; padding: clamp(12px, 2.2vw, 28px); }
+  .aviso-impresion { background: #202940; color: #d5defa; border-color: #3a486b; }
+
+  @media (max-width: 560px) {
+    .topbar { padding: 12px; }
+    .lienzo-toolbar .spacer { display: none; }
+    .zoom-label input { width: 88px; }
+  }
+}
+
