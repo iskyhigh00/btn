@@ -11,6 +11,8 @@
 
 let _seleccion = new Set(); // ids de botones seleccionados en el lienzo
 let _zoom = 0.85;
+let _accionesVistaBoton = null;
+let _observadorVistaBoton = null;
 
 function _hojaActual() {
   return Store.hojaActual();
@@ -39,7 +41,7 @@ function _estaResaltado(b) {
 function vistaInicio() {
   _seleccion = new Set();
   app.innerHTML = `
-    <div class="editor">
+    <div class="editor editor-hojas" data-vista-movil="hoja">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
         <div class="lienzo-toolbar card">
@@ -66,7 +68,10 @@ function vistaInicio() {
             <button class="btn sm" id="btn-rehacer">Rehacer</button>
           </div>
           <span class="spacer"></span>
-          <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
+          <div class="barra-hoja zoom-hoja">
+            <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.01" value="${_zoom}"></label>
+            <button class="btn sm" id="btn-ajustar-ancho" type="button">Ajustar ancho</button>
+          </div>
           <details class="menu-editor">
             <summary class="btn sm">Archivo</summary>
             <div class="menu-editor-opciones">
@@ -76,8 +81,20 @@ function vistaInicio() {
             </div>
           </details>
           <input type="file" id="input-importar" accept="application/json" style="display:none">
+          <button class="btn sm" id="btn-vista-movil" type="button" hidden>Ver botón</button>
           <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
+        <dialog id="modo-importacion" aria-labelledby="titulo-importacion">
+          <form method="dialog" class="panel-form">
+            <h3 id="titulo-importacion">Importar proyecto</h3>
+            <p class="muted" id="nombre-archivo-importado"></p>
+            <div class="barra-hoja">
+              <button class="btn" value="agregar" autofocus>Agregar hojas al proyecto</button>
+              <button class="btn sec" value="reemplazar">Reemplazar proyecto</button>
+              <button class="btn sec" value="cancelar">Cancelar</button>
+            </div>
+          </form>
+        </dialog>
         <dialog id="guardar-juego">
           <form class="panel-form">
             <h3>Guardar hoja como juego</h3>
@@ -99,8 +116,20 @@ function vistaInicio() {
             </div>
           </form>
         </dialog>
+        <section id="vista-boton" class="vista-boton card" aria-label="Vista del botón" hidden>
+          <div class="cabecera-vista-boton">
+            <strong>Botón seleccionado</strong>
+            <span id="medidas-vista-boton" class="muted"></span>
+            <span id="ayuda-vista-boton" class="muted"></span>
+          </div>
+          <div id="escena-boton" class="escena-boton">
+            <div id="muestra-boton" class="boton-print muestra-boton"></div>
+          </div>
+        </section>
         <div class="lienzo-scroll">
-          <div class="hoja" id="hoja" style="transform:scale(${_zoom})"></div>
+          <div id="hoja-escala" class="hoja-escala">
+            <div class="hoja" id="hoja"></div>
+          </div>
         </div>
       </section>
     </div>`;
@@ -109,6 +138,9 @@ function vistaInicio() {
   _renderHoja();
   _renderPanel();
   _enlazarToolbar();
+  _enlazarVistaBoton();
+  if (window.matchMedia("(max-width: 900px)").matches) _ajustarAnchoHoja();
+  else _aplicarZoomHoja(_zoom);
 }
 
 // ---------- Toolbar (selector de hoja, zoom, exportar/importar, imprimir) ----------
@@ -221,7 +253,7 @@ function _enlazarToolbar() {
       const estado = Store[accion]();
       if (!estado) return toast(`No hay cambios para ${accion}.`);
       S = estado;
-      _seleccion = new Set();
+      _seleccion = new Set(_hojaActual().botones.filter((b) => _seleccion.has(b.id)).map((b) => b.id));
       document.getElementById("toasts").replaceChildren();
       _renderSelectorHojas();
       _renderHoja();
@@ -299,10 +331,8 @@ function _enlazarToolbar() {
       if (_hojaActual().id === actual.id) _renderHoja();
     }, 12000);
   };
-  document.getElementById("zoom").oninput = (e) => {
-    _zoom = Number(e.target.value);
-    document.getElementById("hoja").style.transform = `scale(${_zoom})`;
-  };
+  document.getElementById("zoom").oninput = (e) => _aplicarZoomHoja(Number(e.target.value));
+  document.getElementById("btn-ajustar-ancho").onclick = _ajustarAnchoHoja;
   document.getElementById("btn-exportar").onclick = () => {
     const blob = new Blob([Store.exportarJSON()], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -312,27 +342,59 @@ function _enlazarToolbar() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  document.getElementById("btn-importar").onclick = () => document.getElementById("input-importar").click();
-  document.getElementById("input-importar").onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const modo = confirm("Aceptar = reemplazar todo.\nCancelar = agregar como hojas nuevas (sin borrar lo actual).")
-      ? "reemplazar"
-      : "agregar";
-    const reader = new FileReader();
-    reader.onload = () => {
-      S = Store.importarJSON(reader.result, modo);
-      _seleccion = new Set();
-      _renderSelectorHojas();
-      _renderHoja();
-      _renderPanel();
-      toast("Importado.");
+  const archivoImportar = document.getElementById("input-importar");
+  const modoImportacion = document.getElementById("modo-importacion");
+  let respaldoPendiente = null;
+  document.getElementById("btn-importar").onclick = () => archivoImportar.click();
+  archivoImportar.onchange = () => {
+    const archivo = archivoImportar.files[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      if (!modoImportacion.isConnected) return;
+      respaldoPendiente = lector.result;
+      document.getElementById("nombre-archivo-importado").textContent = archivo.name;
+      modoImportacion.returnValue = "";
+      modoImportacion.showModal();
     };
-    reader.readAsText(file);
-    e.target.value = "";
+    lector.onerror = () => toast("No se pudo leer el archivo.");
+    lector.readAsText(archivo);
+    archivoImportar.value = "";
+  };
+  modoImportacion.onclose = () => {
+    const modo = modoImportacion.returnValue;
+    const respaldo = respaldoPendiente;
+    respaldoPendiente = null;
+    if (!respaldo || !["agregar", "reemplazar"].includes(modo)) return;
+    const importado = Store.importarJSON(respaldo, modo);
+    if (!importado) return;
+    S = importado;
+    _seleccion = new Set();
+    _renderSelectorHojas();
+    _renderHoja();
+    _renderPanel();
+    toast("Proyecto importado.");
   };
   document.getElementById("btn-calibrar").onclick = _imprimirPruebaEscala;
   document.getElementById("btn-imprimir").onclick = () => window.print();
+}
+
+function _aplicarZoomHoja(escala) {
+  _zoom = escala;
+  document.getElementById("zoom").value = escala;
+  document.getElementById("hoja").style.transform = `scale(${escala})`;
+  const caja = document.getElementById("hoja-escala");
+  caja.style.width = `${HOJA_ANCHO_MM * escala}mm`;
+  caja.style.height = `${HOJA_ALTO_MM * escala}mm`;
+}
+
+function _ajustarAnchoHoja() {
+  const contenedor = document.getElementById("hoja-escala").parentElement;
+  if (!contenedor.clientWidth) return;
+  const estilo = getComputedStyle(contenedor);
+  const ancho = contenedor.clientWidth - parseFloat(estilo.paddingLeft) - parseFloat(estilo.paddingRight);
+  const escala = Math.floor(ancho / (HOJA_ANCHO_MM * PX_POR_MM) * 100) / 100;
+  _aplicarZoomHoja(clamp(escala, 0.3, 1.3));
 }
 
 function _imprimirPruebaEscala() {
@@ -369,6 +431,7 @@ function _renderHoja() {
   h.botones.forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
   _sincronizarTextoGrupos(h);
   _enlazarBotones();
+  _renderVistaBoton();
   const cantidad = h.botones.length;
   document.getElementById("total-botones").textContent = `${cantidad} ${cantidad === 1 ? "botón" : "botones"}`;
 }
@@ -499,35 +562,67 @@ function _resolverBloque(texto, c) {
   return String(texto ?? "").replace(/\{(código|prefijo|superior|inferior)\}/g, (_, clave) => String(valores[clave] ?? ""));
 }
 
-function _bloquesLibresHTML(c) {
-  return c.bloques.map((b) => {
+const FUENTES_BLOQUE = {
+  normal: "Arial, sans-serif",
+  estrecha: "'Arial Narrow', 'Liberation Sans Narrow', sans-serif",
+  serif: "Georgia, serif",
+  mono: "monospace",
+};
+
+const TIPOS_BLOQUE = { texto: "Texto", linea: "Separador", logo: "Imagen", rectangulo: "Rectángulo", elipse: "Elipse" };
+
+function _bloquesLibresHTML(c, esVista) {
+  return c.bloques.map((b, i) => {
     const x = _numeroAcotado(b.x, 50, 0, 100);
     const y = _numeroAcotado(b.y, 50, 0, 100);
-    const ancho = _numeroAcotado(b.ancho, 90, 1, 100);
-    const tam = _numeroAcotado(b.tam, 4, 0.5, 50);
+    const ancho = _numeroAcotado(b.ancho, 90, 1, 4000);
+    const tam = _numeroAcotado(b.tam, 4, 0.5, 220);
     const giro = _numeroAcotado(b.giro, 0, -180, 180);
-    const pos = `left:${x}%;top:${y}%;width:${ancho}%;transform:translate(-50%,-50%) rotate(${giro}deg)`;
-    if (b.tipo === "linea") return `<span class="bloque-libre bloque-separador" style="${pos};height:${tam}mm"></span>`;
+    const color = /^#[0-9a-f]{6}$/i.test(b.color) ? b.color : "inherit";
+    const pos = `left:${x}%;top:${y}%;width:${ancho}%;transform:translate(-50%,-50%) rotate(${giro}deg);color:${color}`;
+    const datos = esVista ? ` data-bloque="${i}"` : "";
+    if (["linea", "rectangulo", "elipse"].includes(b.tipo)) {
+      const radio = b.tipo === "elipse" ? "50%" : "0";
+      return `<span class="bloque-libre bloque-separador"${datos} style="${pos};height:${tam}mm;border-radius:${radio}"></span>`;
+    }
     if (b.tipo === "logo") {
       const src = S.logos[b.logoId];
-      return src ? `<span class="bloque-libre" style="${pos};height:${tam}mm"><img alt="" src="${esc(src)}"></span>` : "";
+      return src || esVista ? `<span class="bloque-libre bloque-imagen"${datos} style="${pos};height:${tam}mm">${src ? `<img alt="" src="${esc(src)}">` : ""}</span>` : "";
     }
     const alineacion = ["left", "center", "right"].includes(b.alineacion) ? b.alineacion : "center";
-    return `<span class="bloque-libre bloque-texto" style="${pos};font-size:${tam}mm;font-weight:${b.negrita === false ? 400 : 700};text-align:${alineacion}">${esc(_resolverBloque(b.texto, c))}</span>`;
+    const fuente = Object.hasOwn(FUENTES_BLOQUE, b.fuente) ? FUENTES_BLOQUE[b.fuente] : FUENTES_BLOQUE.normal;
+    return `<span class="bloque-libre bloque-texto"${datos} style="${pos};font-size:${Math.min(tam, 50)}mm;font-family:${fuente};font-weight:${b.negrita === false ? 400 : 700};text-align:${alineacion}${b.apilado ? ";writing-mode:vertical-rl;text-orientation:upright;white-space:pre" : ""}">${esc(_resolverBloque(b.texto, c))}</span>`;
   }).join("");
 }
 
-function _bloquesIniciales(contenido) {
+function _bloquesIniciales(contenido, boton) {
+  const original = boton && document.querySelector(`#hoja .boton-print[data-id="${boton.id}"]`);
+  const caja = original?.getBoundingClientRect();
+  const orientacion = _orientacionTexto(contenido.orientacionTexto);
+  const giro = orientacion === "vertical" ? 90 : orientacion === "vertical-inverso" ? -90 : 0;
   const lineas = [
-    [contenido.arriba, "{superior}"],
-    [contenido.numero != null && contenido.numero !== "", "{prefijo}{código}"],
-    [contenido.abajo, "{inferior}"],
-  ].filter(([visible]) => visible);
-  return lineas.map(([, texto], i) => ({ tipo:"texto", texto, x:50, y:100 * (i + 1) / (lineas.length + 1), ancho:90, tam:4, giro:0, negrita:true }));
+    ["boton-linea-arriba", contenido.arriba, "{superior}"],
+    ["boton-numero", contenido.numero != null && contenido.numero !== "", "{prefijo}{código}"],
+    ["boton-linea-abajo", contenido.abajo, "{inferior}"],
+  ].filter(([, visible]) => visible);
+  return lineas.map(([clase, , texto], i) => {
+    const nodo = original?.querySelector(`.${clase}`);
+    const rect = nodo?.getBoundingClientRect();
+    if (!rect || !caja?.width || !caja.height) return {
+      tipo: "texto", texto, x: 50, y: 100 * (i + 1) / (lineas.length + 1), ancho: 90, tam: 4, giro, negrita: true,
+    };
+    return {
+      tipo: "texto", texto, giro, negrita: true, apilado: orientacion === "apilado",
+      x: _posicionBloque((rect.left + rect.width / 2 - caja.left) / caja.width * 100),
+      y: _posicionBloque((rect.top + rect.height / 2 - caja.top) / caja.height * 100),
+      ancho: Math.min(4000, Math.ceil((giro ? rect.height : rect.width) / caja.width * 100 + 2)),
+      tam: Math.max(0.5, Number.parseFloat(nodo.style.fontSize) || 4),
+    };
+  });
 }
 
 function _editorComposicion(prefijo, c) {
-  return `<details class="opciones-texto">
+  return `<details class="opciones-texto" ${c.composicionLibre ? "open" : ""}>
     <summary>Composición libre</summary>
     <label class="campo"><span><input type="checkbox" id="${prefijo}-libre" ${c.composicionLibre ? "checked" : ""}> Usar bloques posicionables</span></label>
     <div id="${prefijo}-bloques"></div>
@@ -537,67 +632,153 @@ function _editorComposicion(prefijo, c) {
 function _enlazarComposicion(prefijo, botones, refrescar, persistir) {
   const toggle = document.getElementById(`${prefijo}-libre`);
   const panel = document.getElementById(`${prefijo}-bloques`);
-  const leer = () => botones()[0].contenido;
-  const aplicar = (cambio) => {
+  const leer = () => botones()[0]?.contenido;
+  let indice = 0;
+  const aplicar = (cambio, guardar = true) => {
     botones().forEach((b) => Object.assign(b.contenido, cambio));
     refrescar();
-    persistir();
+    if (guardar) persistir();
+  };
+  const cambiar = (i, cambio, guardar = true) => {
+    if (!leer()?.bloques?.[i]) return;
+    aplicar({ bloques: leer().bloques.map((b, n) => n === i ? { ...b, ...cambio } : b) }, guardar);
   };
   const campo = (b, nombre, etiqueta, defecto, min, max, paso) =>
     `<label class="campo">${etiqueta}<input data-campo="${nombre}" type="number" min="${min}" max="${max}" step="${paso}" value="${_numeroAcotado(b[nombre], defecto, min, max)}"></label>`;
+  const opciones = (items, seleccionado) => items.map(([id, nombre]) =>
+    `<option value="${esc(id)}" ${seleccionado === id ? "selected" : ""}>${esc(nombre)}</option>`).join("");
   const pintar = () => {
     const c = leer();
-    panel.hidden = !c.composicionLibre;
+    panel.hidden = !c?.composicionLibre;
     if (panel.hidden) return;
+    const bloques = Array.isArray(c.bloques) ? c.bloques : [];
+    const b = bloques[indice];
+    const altoMaximo = b?.tipo === "texto" ? 50 : 220;
     panel.innerHTML = `
-      <p class="muted">Posición X/Y en porcentaje desde la esquina superior izquierda hasta el centro del bloque. Para series usa {código} o {prefijo}.</p>
-      ${c.bloques.map((b, i) => `<fieldset class="bloque-campos" data-indice="${i}">
-        <legend>${b.tipo === "linea" ? "Separador" : b.tipo === "logo" ? "Imagen" : "Texto"} ${i + 1}</legend>
-        ${b.tipo === "texto" ? `<label class="campo">Texto<textarea rows="2" data-campo="texto">${esc(b.texto || "")}</textarea></label>
-        <label class="campo">Alineación<select data-campo="alineacion">${[["left","Izquierda"],["center","Centro"],["right","Derecha"]].map(([id,label]) => `<option value="${id}" ${(b.alineacion || "center") === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-        <label class="campo"><span><input type="checkbox" data-campo="negrita" ${b.negrita === false ? "" : "checked"}> Negrita</span></label>` : ""}
-        ${b.tipo === "logo" ? `<label class="campo">Imagen guardada<select data-campo="logoId"><option value="">Elegir imagen</option>${Object.keys(S.logos).map((id, n) => `<option value="${esc(id)}" ${b.logoId === id ? "selected" : ""}>Imagen ${n + 1}</option>`).join("")}</select></label>` : ""}
-        <div class="fila-2">${campo(b,"x","X (%)",50,0,100,0.5)}${campo(b,"y","Y (%)",50,0,100,0.5)}
-        ${campo(b,"ancho","Ancho (%)",90,1,100,0.5)}${campo(b,"tam",b.tipo === "linea" ? "Grosor (mm)" : b.tipo === "logo" ? "Alto (mm)" : "Tamaño (mm)",4,0.5,50,0.1)}
-        ${campo(b,"giro","Giro (°)",0,-180,180,1)}</div>
-        <button type="button" data-quitar="${i}" class="btn sm sec">Quitar bloque</button>
-      </fieldset>`).join("")}
       <div class="barra-hoja">
-        <button type="button" data-agregar="texto" class="btn sm">+ Texto</button>
-        <button type="button" data-agregar="linea" class="btn sm">+ Separador</button>
-        <button type="button" data-agregar="logo" class="btn sm">+ Imagen</button>
-      </div>`;
+        <label class="campo accion-nuevo-elemento">Agregar elemento
+          <select data-nuevo>${opciones(Object.entries(TIPOS_BLOQUE), "texto")}</select>
+        </label>
+        <button type="button" data-accion="agregar" class="btn sm">Agregar</button>
+      </div>
+      ${b ? `<label class="campo">Elemento
+        <select data-seleccionar>${opciones(bloques.map((item, i) => [String(i), `${TIPOS_BLOQUE[item.tipo] || "Texto"} ${i + 1}`]), String(indice))}</select>
+      </label>
+      <fieldset class="bloque-campos">
+        <legend>${TIPOS_BLOQUE[b.tipo] || "Texto"}</legend>
+        ${b.tipo === "texto" ? `<label class="campo">Texto del elemento<textarea rows="2" data-campo="texto">${esc(b.texto || "")}</textarea></label>
+          ${prefijo === "gr" ? '<small class="muted">Usa {código} y {prefijo} para la serie.</small>' : ""}
+          <div class="fila-2">
+            <label class="campo">Alineación<select data-campo="alineacion">${opciones([["left","Izquierda"],["center","Centro"],["right","Derecha"]], b.alineacion || "center")}</select></label>
+            <label class="campo">Fuente<select data-campo="fuente">${opciones([["normal","Sans"],["estrecha","Estrecha"],["serif","Serif"],["mono","Monoespaciada"]], b.fuente || "normal")}</select></label>
+          </div>
+          <label class="campo"><span><input type="checkbox" data-campo="negrita" ${b.negrita === false ? "" : "checked"}> Negrita</span></label>
+          <label class="campo"><span><input type="checkbox" data-campo="apilado" ${b.apilado ? "checked" : ""}> Apilar letras</span></label>` : ""}
+        ${b.tipo === "logo" ? `<label class="campo">Imagen guardada<select data-campo="logoId">${opciones([["","Elegir imagen"], ...Object.keys(S.logos).map((id, n) => [id, `Imagen ${n + 1}`])], b.logoId || "")}</select></label>
+          <label class="campo">Cargar imagen al elemento<input type="file" accept="image/*" data-cargar-imagen></label>` : `
+          <label class="campo">Color del elemento<input type="color" data-campo="color" value="${/^#[0-9a-f]{6}$/i.test(b.color) ? b.color : "#000000"}"></label>`}
+        <div class="fila-2">${campo(b,"x","X (%)",50,0,100,0.5)}${campo(b,"y","Y (%)",50,0,100,0.5)}
+        ${campo(b,"ancho","Ancho (%)",90,1,4000,0.5)}${campo(b,"tam",b.tipo === "linea" ? "Grosor (mm)" : b.tipo === "texto" ? "Tamaño (mm)" : "Alto (mm)",4,0.5,altoMaximo,0.1)}
+        ${campo(b,"giro","Giro (°)",0,-180,180,1)}</div>
+        <div class="barra-hoja">
+          <button type="button" data-accion="abajo" class="btn sm" ${indice === 0 ? "disabled" : ""}>Mover atrás</button>
+          <button type="button" data-accion="arriba" class="btn sm" ${indice === bloques.length - 1 ? "disabled" : ""}>Mover adelante</button>
+          <button type="button" data-accion="duplicar" class="btn sm">Duplicar elemento</button>
+          <button type="button" data-accion="quitar" class="btn sm sec">Quitar elemento</button>
+        </div>
+      </fieldset>` : ""}`;
+  };
+  const seleccionar = (i) => {
+    if (!leer()?.bloques?.[i]) return;
+    if (i !== indice) { indice = i; pintar(); }
+    _marcarBloqueEnVista(indice);
+  };
+  _accionesVistaBoton = {
+    indice: () => indice,
+    seleccionar,
+    quitar(i) {
+      const bloques = leer().bloques.filter((_, n) => n !== i);
+      indice = Math.max(0, Math.min(i, bloques.length - 1));
+      aplicar({ bloques });
+      pintar();
+      const siguiente = document.querySelector(`#muestra-boton [data-bloque="${indice}"]`);
+      (siguiente || panel.querySelector("[data-nuevo]"))?.focus({ preventScroll: true });
+    },
+    posicion(i) {
+      const b = leer()?.bloques?.[i];
+      return b && { x: _numeroAcotado(b.x, 50, 0, 100), y: _numeroAcotado(b.y, 50, 0, 100) };
+    },
+    mover(i, posicion, foco) {
+      cambiar(i, posicion);
+      ["x", "y"].forEach((eje) => {
+        const campo = panel.querySelector(`[data-campo="${eje}"]`);
+        if (campo) campo.value = posicion[eje];
+      });
+      if (foco) document.querySelector(`#muestra-boton [data-bloque="${i}"]`)?.focus({ preventScroll: true });
+    },
   };
   toggle.onchange = () => {
-    aplicar({ composicionLibre: toggle.checked, bloques: leer().bloques ?? _bloquesIniciales(leer()) });
+    aplicar({ composicionLibre: toggle.checked, bloques: leer().bloques ?? _bloquesIniciales(leer(), _botonSeleccionado()) });
     pintar();
+  };
+  panel.oninput = (e) => {
+    const input = e.target;
+    const nombre = input.dataset.campo;
+    if (!nombre || (input.type === "number" && !Number.isFinite(input.valueAsNumber))) return;
+    const valor = input.type === "checkbox" ? input.checked : input.type === "number"
+      ? _numeroAcotado(input.value, undefined, Number(input.min), Number(input.max)) : input.value;
+    cambiar(indice, { [nombre]: valor }, false);
   };
   panel.onchange = (e) => {
     const input = e.target;
-    const nombre = input.dataset.campo;
-    if (!nombre) return;
-    const indice = Number(input.closest("fieldset").dataset.indice);
-    const bloques = leer().bloques.map((b, i) => i === indice ? { ...b, [nombre]: input.type === "checkbox"
-      ? input.checked : input.type === "number" ? _numeroAcotado(input.value, b[nombre], Number(input.min), Number(input.max)) : input.value } : b);
-    aplicar({ bloques });
+    if (input.matches("[data-seleccionar]")) return seleccionar(Number(input.value));
+    if (input.dataset.campo) {
+      persistir();
+      if (input.type === "number") input.value = leer().bloques[indice][input.dataset.campo] ?? input.defaultValue;
+    }
+    const archivo = input.matches("[data-cargar-imagen]") && input.files[0];
+    if (archivo?.type.startsWith("image/")) {
+      const lector = new FileReader();
+      const i = indice, id = _botonSeleccionado()?.id;
+      const bloque = leer().bloques[i];
+      lector.onload = () => {
+        if (_botonSeleccionado()?.id !== id || leer()?.bloques?.[i] !== bloque) return;
+        cambiar(i, { logoId: Store.agregarLogo(lector.result) });
+        pintar();
+      };
+      lector.readAsDataURL(archivo);
+    }
   };
   panel.onclick = (e) => {
-    const boton = e.target.closest("button");
-    if (!boton) return;
+    const accion = e.target.closest("button")?.dataset.accion;
+    if (!accion) return;
     const bloques = [...leer().bloques];
-    if (boton.dataset.agregar) {
-      const tipo = boton.dataset.agregar;
-      bloques.push({ tipo, texto:"", x:50, y:50, ancho:90, tam:tipo === "linea" ? 0.5 : tipo === "logo" ? 10 : 4, giro:0, negrita:true });
-    } else if (boton.dataset.quitar != null) {
-      bloques.splice(Number(boton.dataset.quitar), 1);
-    } else return;
+    if (accion === "agregar") {
+      const tipo = panel.querySelector("[data-nuevo]").value;
+      bloques.push({ tipo, texto: tipo === "texto" ? "Texto" : "", x: 50, y: 50, ancho: tipo === "texto" ? 75 : 50,
+        tam: tipo === "linea" ? 0.5 : tipo === "texto" ? 4 : 8, giro: 0, negrita: true });
+      indice = bloques.length - 1;
+    } else if (accion === "duplicar") {
+      const actual = bloques[indice];
+      bloques.splice(indice + 1, 0, { ...actual, x: _posicionBloque((actual.x ?? 50) + 5), y: _posicionBloque((actual.y ?? 50) + 5) });
+      indice++;
+    } else if (accion === "quitar") {
+      bloques.splice(indice, 1);
+      indice = Math.max(0, Math.min(indice, bloques.length - 1));
+    } else {
+      const siguiente = indice + (accion === "arriba" ? 1 : -1);
+      if (!bloques[siguiente]) return;
+      [bloques[indice], bloques[siguiente]] = [bloques[siguiente], bloques[indice]];
+      indice = siguiente;
+    }
     aplicar({ bloques });
     pintar();
+    panel.querySelector('[data-seleccionar]')?.focus({ preventScroll: true });
   };
   pintar();
 }
 
-function _contenidoHTML(b) {
+function _contenidoHTML(b, esVista = false) {
   const c = b.contenido;
   if (c.tipo === "logo") {
     const src = S.logos[c.logoId] || "";
@@ -605,7 +786,7 @@ function _contenidoHTML(b) {
       <img src="${src}" style="transform: translate(${c.offsetX || 0}%, ${c.offsetY || 0}%) scale(${c.zoom || 1})">
     </div>`;
   }
-  if (c.composicionLibre && Array.isArray(c.bloques)) return _bloquesLibresHTML(c);
+  if (c.composicionLibre && Array.isArray(c.bloques)) return _bloquesLibresHTML(c, esVista);
   // El plural automático es opcional y solo se aplica a códigos numéricos.
   const arriba = c.arriba || "";
   const abajo = c.textoLiteral || !Number.isFinite(Number(c.numero)) ? (c.abajo || "") : pluralizar(c.numero, c.abajo);
@@ -645,7 +826,129 @@ function _contenidoHTML(b) {
   return html;
 }
 
-function _pintarBoton(el, b) {
+function _renderVistaBoton() {
+  const vista = document.getElementById("vista-boton");
+  const boton = _botonSeleccionado();
+  document.getElementById("btn-vista-movil").hidden = !boton;
+  vista.hidden = !boton;
+  if (!boton) {
+    vista.removeAttribute("data-boton");
+    return;
+  }
+  const editor = vista.closest(".editor-hojas");
+  if (vista.dataset.boton !== boton.id) editor.dataset.vistaMovil = "boton";
+  vista.dataset.boton = boton.id;
+  document.getElementById("btn-vista-movil").textContent = editor.dataset.vistaMovil === "boton" ? "Ver hoja" : "Ver botón";
+  const muestra = document.getElementById("muestra-boton");
+  _pintarBoton(muestra, boton, true);
+  const original = document.querySelector(`#hoja .boton-print[data-id="${boton.id}"]`);
+  for (const clase of [".boton-linea-arriba", ".boton-numero", ".boton-linea-abajo"]) {
+    const linea = original?.querySelector(clase);
+    const copia = muestra.querySelector(clase);
+    if (linea && copia) copia.style.fontSize = linea.style.fontSize;
+  }
+  muestra.style.left = muestra.style.top = "50%";
+  document.getElementById("medidas-vista-boton").textContent = `${_MM(boton.w)} × ${_MM(boton.h)} mm`;
+  const editable = !!_accionesVistaBoton && boton.contenido.composicionLibre;
+  muestra.classList.toggle("muestra-editable", editable);
+  document.getElementById("ayuda-vista-boton").textContent = editable ? "Arrastra los elementos para colocarlos" : "";
+  if (editable) _marcarBloqueEnVista(_accionesVistaBoton.indice());
+  _ajustarVistaBoton();
+}
+
+function _ajustarVistaBoton() {
+  const escena = document.getElementById("escena-boton");
+  const boton = _botonSeleccionado();
+  if (!escena || !boton || !escena.clientWidth || !escena.clientHeight) return;
+  const escala = Math.min(
+    Math.max(1, escena.clientWidth - 28) / (boton.w * PX_POR_MM),
+    Math.max(1, escena.clientHeight - 20) / (boton.h * PX_POR_MM),
+    9
+  );
+  document.getElementById("muestra-boton").style.transform = `translate(-50%, -50%) scale(${escala})`;
+}
+
+function _marcarBloqueEnVista(indice) {
+  document.querySelectorAll("#muestra-boton [data-bloque]").forEach((nodo) => {
+    const activo = Number(nodo.dataset.bloque) === indice;
+    nodo.classList.toggle("bloque-activo", activo);
+    nodo.tabIndex = activo ? 0 : -1;
+    nodo.setAttribute("aria-label", `Elemento ${Number(nodo.dataset.bloque) + 1}. Usa las flechas para moverlo.`);
+  });
+}
+
+function _enlazarVistaBoton() {
+  const escena = document.getElementById("escena-boton");
+  const muestra = document.getElementById("muestra-boton");
+  _observadorVistaBoton?.disconnect();
+  _observadorVistaBoton = new ResizeObserver(_ajustarVistaBoton);
+  _observadorVistaBoton.observe(escena);
+  document.getElementById("btn-vista-movil").onclick = () => {
+    const editor = escena.closest(".editor-hojas");
+    editor.dataset.vistaMovil = editor.dataset.vistaMovil === "boton" ? "hoja" : "boton";
+    _renderVistaBoton();
+  };
+
+  let arrastre = null;
+  escena.onpointerdown = (e) => {
+    const nodo = e.target.closest("[data-bloque]");
+    if (!_accionesVistaBoton || !muestra.classList.contains("muestra-editable") || e.button !== 0 || !nodo) return;
+    const indice = Number(nodo.dataset.bloque);
+    const posicion = _accionesVistaBoton.posicion(indice);
+    if (!posicion) return;
+    e.preventDefault();
+    escena.setPointerCapture(e.pointerId);
+    _accionesVistaBoton.seleccionar(indice);
+    const rect = muestra.getBoundingClientRect();
+    arrastre = { id: e.pointerId, nodo, indice, rect, inicioX: e.clientX, inicioY: e.clientY, ...posicion };
+    nodo.focus({ preventScroll: true });
+  };
+  escena.onpointermove = (e) => {
+    if (arrastre?.id !== e.pointerId) return;
+    const { inicioX, inicioY, rect, x, y, nodo } = arrastre;
+    arrastre.nueva = {
+      x: _posicionBloque(x + (e.clientX - inicioX) / rect.width * 100),
+      y: _posicionBloque(y + (e.clientY - inicioY) / rect.height * 100),
+    };
+    nodo.style.left = `${arrastre.nueva.x}%`;
+    nodo.style.top = `${arrastre.nueva.y}%`;
+  };
+  escena.onpointerup = (e) => {
+    if (arrastre?.id !== e.pointerId) return;
+    const { indice, nueva } = arrastre;
+    arrastre = null;
+    if (nueva) _accionesVistaBoton?.mover(indice, nueva, true);
+  };
+  escena.onpointercancel = () => { arrastre = null; _renderVistaBoton(); };
+  escena.onkeydown = (e) => {
+    const indice = Number(e.target.dataset.bloque);
+    const pasos = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (!_accionesVistaBoton || !Number.isInteger(indice)) return;
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      e.stopPropagation();
+      _accionesVistaBoton.quitar(indice);
+      return;
+    }
+    const direccion = pasos[e.key];
+    if (!direccion) return;
+    const posicion = _accionesVistaBoton.posicion(indice);
+    if (!posicion) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const paso = e.shiftKey ? 5 : 0.5;
+    _accionesVistaBoton.mover(indice, {
+      x: _posicionBloque(posicion.x + direccion[0] * paso),
+      y: _posicionBloque(posicion.y + direccion[1] * paso),
+    }, true);
+  };
+}
+
+function _posicionBloque(valor) {
+  return Math.round(clamp(valor, 0, 100) * 10) / 10;
+}
+
+function _pintarBoton(el, b, esVista = false) {
   if (!el) return;
   el.style.left = `${b.x}mm`;
   el.style.top = `${b.y}mm`;
@@ -656,12 +959,12 @@ function _pintarBoton(el, b) {
   el.style.borderRadius = b.forma === "capsula" ? "999mm" : formaRadioCss(b);
   el.dataset.orientacion = b.contenido.tipo === "texto" ? _orientacionTexto(b.contenido.orientacionTexto) : "horizontal";
   el.style.padding = `${b.paddingVMm ?? 3}mm ${b.paddingHMm ?? 3}mm`;
-  el.classList.toggle("seleccionado", _estaResaltado(b));
+  el.classList.toggle("seleccionado", !esVista && _estaResaltado(b));
   const contorno = _contornoEspecial(b);
   el.dataset.contorno = contorno ? "especial" : "";
   const guia = contorno ? `<svg class="contorno-boton" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="${contorno}" vector-effect="non-scaling-stroke"></path></svg>` : "";
   if (contorno) el.style.setProperty("--fondo-contorno", b.fondo);
-  el.innerHTML = guia + _contenidoHTML(b);
+  el.innerHTML = guia + _contenidoHTML(b, esVista);
   _ajustarTextoAncho(el);
 }
 
@@ -684,14 +987,14 @@ function _ajustarTextoAncho(el) {
 }
 
 function _pintarSeleccionEnCanvas() {
-  document.querySelectorAll(".boton-print").forEach((el) => {
+  document.querySelectorAll("#hoja .boton-print").forEach((el) => {
     const b = _hojaActual().botones.find((x) => x.id === el.dataset.id);
     el.classList.toggle("seleccionado", b ? _estaResaltado(b) : false);
   });
 }
 
 function _enlazarBotones() {
-  document.querySelectorAll(".boton-print").forEach((el) => {
+  document.querySelectorAll("#hoja .boton-print").forEach((el) => {
     el.onpointerdown = (e) => _iniciarDrag(e, el);
     el.onclick = (e) => {
       if (el.dataset.arrastrado === "1") { el.dataset.arrastrado = "0"; return; }
@@ -756,6 +1059,7 @@ function _renderMarcasCorte() {
   const h = _hojaActual();
   hojaEl.querySelectorAll(".marca-corte, .marca-borde").forEach((m) => m.remove());
   hojaEl.insertAdjacentHTML("afterbegin", _marcasHtml(h.botones));
+  _renderVistaBoton();
 }
 
 // Elimina botones sin pedir confirmación (para atajos como Supr) pero permite
@@ -800,6 +1104,7 @@ function _duplicarSeleccion() {
 }
 
 function _renderPanel() {
+  _accionesVistaBoton = null;
   const seleccionado = _botonSeleccionado();
   const duplicar = document.getElementById("btn-duplicar-seleccion");
   duplicar.disabled = !_seleccion.size;
@@ -808,6 +1113,7 @@ function _renderPanel() {
   if (_seleccion.size > 1) {
     panel.innerHTML = _formSeleccionMultiple();
     _enlazarFormSeleccionMultiple();
+    _renderVistaBoton();
     return;
   }
   const b = seleccionado;
@@ -821,6 +1127,7 @@ function _renderPanel() {
     panel.innerHTML = _formAgregar();
     _enlazarFormAgregar();
   }
+  _renderVistaBoton();
 }
 
 // ---------- Selección múltiple (varios botones, incluso de grupos distintos) ----------
@@ -1346,7 +1653,7 @@ function _enlazarFormEditar(b) {
 
   document.getElementById("e-cerrar").onclick = () => {
     _seleccion = new Set();
-    document.querySelectorAll(".boton-print").forEach((x) => x.classList.remove("seleccionado"));
+    document.querySelectorAll("#hoja .boton-print").forEach((x) => x.classList.remove("seleccionado"));
     _renderPanel();
   };
 
@@ -1546,6 +1853,7 @@ function _formEditarGrupo(grupoId) {
         ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numeroPrefijo || "")}${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
       </div>
       <button class="btn" id="gr-duplicar" type="button">Duplicar grupo</button>
+      <button class="btn sec" id="gr-separar" type="button">Separar botón seleccionado</button>
       <button class="btn sec" id="gr-eliminar">Eliminar grupo completo</button>
     </div>`;
 }
@@ -1556,7 +1864,7 @@ function _enlazarFormEditarGrupo(grupoId) {
 
   document.getElementById("e-cerrar").onclick = () => {
     _seleccion = new Set();
-    document.querySelectorAll(".boton-print").forEach((x) => x.classList.remove("seleccionado"));
+    document.querySelectorAll("#hoja .boton-print").forEach((x) => x.classList.remove("seleccionado"));
     _renderPanel();
   };
 
@@ -1641,6 +1949,15 @@ function _enlazarFormEditarGrupo(grupoId) {
   };
 
   document.getElementById("gr-duplicar").onclick = () => _duplicarGrupo(grupoId);
+  document.getElementById("gr-separar").onclick = () => {
+    const boton = _botonSeleccionado();
+    if (boton?.grupoId !== grupoId) return;
+    delete boton.grupoId;
+    Store.guardar();
+    _renderHoja();
+    _renderPanel();
+    toast("Botón separado del grupo.");
+  };
 
   document.getElementById("gr-eliminar").onclick = () => {
     const cant = miembros().length;
@@ -1674,6 +1991,8 @@ function _panelCelda(id) {
 }
 
 function vistaPanel() {
+  _observadorVistaBoton?.disconnect();
+  _accionesVistaBoton = null;
   _seleccion = new Set(); // evita que Supr borre botones de la otra pestaña
   if (!_panelCelda(_panelSel)) _panelSel = null;
   const e = panelEscala(Store.panelConfig());
@@ -2046,6 +2365,7 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
 
 
 

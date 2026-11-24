@@ -253,10 +253,10 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
 @media screen {
   .campo[hidden] { display: none; }
   .bloque-campos { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; min-width: 0; display: grid; gap: 7px; }
-  :is(#biblioteca-juegos, #guardar-juego) { background: var(--card); color: var(--texto); border: 1px solid var(--line); border-radius: 14px; max-width: min(540px, calc(100vw - 24px)); }
-  :is(#biblioteca-juegos, #guardar-juego)::backdrop { background: #080b13b0; }
+  :is(#biblioteca-juegos, #guardar-juego, #modo-importacion) { background: var(--card); color: var(--texto); border: 1px solid var(--line); border-radius: 14px; max-width: min(540px, calc(100vw - 24px)); }
+  :is(#biblioteca-juegos, #guardar-juego, #modo-importacion)::backdrop { background: #080b13b0; }
 }
-@media print { :is(#biblioteca-juegos, #guardar-juego) { display: none !important; } }
+@media print { :is(#biblioteca-juegos, #guardar-juego, #modo-importacion) { display: none !important; } }
 
 
 @media screen {
@@ -286,4 +286,71 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
   #prueba-escala svg { width: 75mm; height: 75mm; display: block; }
 }
 
+
+
+@media screen {
+  body:has(.editor) { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  body:has(.editor) .topbar { flex: none; }
+  #app:has(.editor) { display: flex; flex: 1; min-height: 0; padding-block: clamp(8px, 1.5vw, 20px); }
+  .editor { flex: 1; min-width: 0; min-height: 0; align-items: stretch; }
+  .editor > .panel-lateral { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .editor .lienzo-wrap { min-height: 0; }
+  .editor .lienzo-toolbar { flex: none; }
+  .editor .lienzo-scroll { flex: 1; min-height: 0; overscroll-behavior: contain; }
+  .vista-boton {
+    display: flex;
+    flex: 0 0 clamp(128px, 27dvh, 244px);
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    padding: 10px;
+  }
+  .vista-boton[hidden], #btn-vista-movil { display: none; }
+  .cabecera-vista-boton { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
+  .escena-boton {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #101624;
+    background-image: radial-gradient(#7486aa44 1px, transparent 1px);
+    background-size: 12px 12px;
+  }
+  .muestra-boton { transform-origin: center; cursor: default; }
+  .muestra-editable [data-bloque] { cursor: grab; touch-action: none; user-select: none; }
+  .muestra-editable [data-bloque]:active { cursor: grabbing; }
+  .muestra-editable img { pointer-events: none; }
+  .muestra-editable .bloque-activo { outline: 1px dashed #3650ce; outline-offset: -1px; }
+  .muestra-editable [data-bloque]:empty { min-height: 1mm; background-color: #a5b5ff60; }
+  .accion-nuevo-elemento { flex: 1; }
+  .accion-nuevo-elemento + button { align-self: end; }
+  [id$="-bloques"] { display: grid; gap: 8px; margin-top: 10px; }
+  [id$="-bloques"][hidden] { display: none; }
+
+  @media (max-width: 900px) {
+    #app:has(.editor) { padding-inline: 8px; }
+    .editor { display: flex; flex-direction: column; gap: 8px; }
+    .editor > .panel-lateral { flex: 1; }
+    .editor .lienzo-wrap { order: -1; flex: 0 0 clamp(174px, 46dvh, 390px); gap: 6px; }
+    .editor .lienzo-toolbar { gap: 6px; padding: 6px; }
+    .editor .lienzo-toolbar .btn { padding: 5px 7px; font-size: 11px; }
+    .editor .barra-hoja { gap: 5px; }
+    .editor .lienzo-toolbar .menu-editor-opciones { position: absolute; margin: 0; }
+    .editor-hojas .vista-boton { flex: 1; padding: 6px; gap: 4px; }
+    .editor-hojas #btn-vista-movil:not([hidden]) { display: inline-block; }
+    .editor-hojas[data-vista-movil="hoja"] .vista-boton { display: none; }
+    .editor-hojas[data-vista-movil="boton"]:has(.vista-boton:not([hidden])) .lienzo-scroll { display: none; }
+    .editor .lienzo-scroll { padding: 8px; }
+  }
+}
+
+@media print { .vista-boton, #btn-vista-movil { display: none !important; } }
+
+@media screen {
+  .hoja-escala { position: relative; overflow: clip; }
+  .hoja-escala > .hoja { position: absolute; inset: 0 auto auto 0; }
+}
+@media print { .hoja-escala { width: auto !important; height: auto !important; } }
 
