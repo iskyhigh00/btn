@@ -919,6 +919,55 @@ function _enlazarFormEditar(b) {
 
 // ---------- Editar un grupo (botones generados por lista de números) ----------
 
+function _posicionCopiaGrupo(botones, ancho, alto) {
+  const margen = MARGEN_HOJA_MM;
+  const limiteX = HOJA_ANCHO_MM - margen;
+  const limiteY = HOJA_ALTO_MM - margen;
+  const porX = [...botones].sort((a, b) => a.x - b.x);
+  const filas = [...new Set([margen, ...botones.map((b) => b.y + b.h)])].sort((a, b) => a - b);
+  for (const y of filas) {
+    if (y < margen || y + alto > limiteY) continue;
+    let x = margen;
+    for (const b of porX) {
+      if (b.y >= y + alto || b.y + b.h <= y) continue;
+      if (x + ancho <= b.x) break;
+      x = Math.max(x, b.x + b.w);
+    }
+    if (x + ancho <= limiteX) return { x, y };
+  }
+  return null;
+}
+
+function _duplicarGrupo(grupoId) {
+  const hoja = _hojaActual();
+  const originales = hoja.botones.filter((b) => b.grupoId === grupoId);
+  if (!originales.length) return;
+  const x = Math.min(...originales.map((b) => b.x));
+  const y = Math.min(...originales.map((b) => b.y));
+  const ancho = Math.max(...originales.map((b) => b.x + b.w)) - x;
+  const alto = Math.max(...originales.map((b) => b.y + b.h)) - y;
+
+  const nuevoGrupoId = uid();
+  const copias = JSON.parse(JSON.stringify(originales));
+  const posicion = _posicionCopiaGrupo(hoja.botones, ancho, alto);
+  const destino = posicion || { x: MARGEN_HOJA_MM, y: MARGEN_HOJA_MM };
+  copias.forEach((b) => {
+    b.id = uid();
+    b.grupoId = nuevoGrupoId;
+    b.x = destino.x + (b.x - x);
+    b.y = destino.y + (b.y - y);
+  });
+
+  if (!posicion) S = Store.crearHoja();
+  _hojaActual().botones.push(...copias);
+  S = Store.guardar();
+  _seleccion = new Set([copias[0].id]);
+  _renderSelectorHojas();
+  _renderHoja();
+  _renderPanel();
+  toast(posicion ? "Grupo duplicado." : "Grupo duplicado en una hoja nueva.");
+}
+
 function _formEditarGrupo(grupoId) {
   const miembros = _miembrosGrupo(grupoId);
   const base = miembros[0];
@@ -942,6 +991,7 @@ function _formEditarGrupo(grupoId) {
       <div class="chips">
         ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numeroPrefijo || "")}${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
       </div>
+      <button class="btn" id="gr-duplicar" type="button">Duplicar grupo</button>
       <button class="btn sec" id="gr-eliminar">Eliminar grupo completo</button>
     </div>`;
 }
@@ -1032,6 +1082,8 @@ function _enlazarFormEditarGrupo(grupoId) {
     _renderPanel();
     toast("Grupo actualizado.");
   };
+
+  document.getElementById("gr-duplicar").onclick = () => _duplicarGrupo(grupoId);
 
   document.getElementById("gr-eliminar").onclick = () => {
     const cant = miembros().length;
@@ -1441,4 +1493,5 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
 
