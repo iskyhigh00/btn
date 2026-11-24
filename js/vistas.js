@@ -53,6 +53,8 @@ function vistaInicio() {
                 <button class="btn sm" id="btn-hoja-nueva">Nueva hoja</button>
                 <button class="btn sm" id="btn-hoja-renombrar">Renombrar hoja</button>
                 <button class="btn sm" id="btn-hoja-duplicar">Duplicar hoja completa</button>
+                <button class="btn sm" id="btn-guardar-juego">Guardar hoja como juego</button>
+                <button class="btn sm" id="btn-cargar-juego">Abrir biblioteca de juegos</button>
                 <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
               </div>
             </details>
@@ -60,6 +62,8 @@ function vistaInicio() {
           <div class="barra-hoja">
             <button class="btn sm" id="btn-duplicar-seleccion" disabled>Duplicar selección</button>
             <button class="btn sm" id="btn-reorganizar">Reorganizar botones</button>
+            <button class="btn sm" id="btn-deshacer">Deshacer</button>
+            <button class="btn sm" id="btn-rehacer">Rehacer</button>
           </div>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
@@ -68,11 +72,23 @@ function vistaInicio() {
             <div class="menu-editor-opciones">
               <button class="btn sm" id="btn-exportar">Exportar proyecto JSON</button>
               <button class="btn sm" id="btn-importar">Importar proyecto JSON</button>
+              <button class="btn sm" id="btn-calibrar">Imprimir prueba de escala</button>
             </div>
           </details>
           <input type="file" id="input-importar" accept="application/json" style="display:none">
           <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
+        <dialog id="biblioteca-juegos">
+          <form method="dialog" class="panel-form">
+            <h3>Biblioteca de juegos</h3>
+            <label class="campo">Juego guardado<select id="juego-guardado"></select></label>
+            <div class="barra-hoja">
+              <button class="btn" type="button" id="juego-crear">Crear hoja desde juego</button>
+              <button class="btn sec" type="button" id="juego-eliminar">Eliminar juego guardado</button>
+              <button class="btn sec">Cerrar</button>
+            </div>
+          </form>
+        </dialog>
         <div class="lienzo-scroll">
           <div class="hoja" id="hoja" style="transform:scale(${_zoom})"></div>
         </div>
@@ -94,7 +110,99 @@ function _renderSelectorHojas() {
     .join("");
 }
 
+function _capturarJuego(hoja, logos, nombre) {
+  const botones = JSON.parse(JSON.stringify(hoja.botones));
+  const ids = new Set();
+  botones.forEach(({ contenido }) => {
+    if (contenido.logoId) ids.add(contenido.logoId);
+    (contenido.bloques || []).forEach((b) => { if (b.logoId) ids.add(b.logoId); });
+  });
+  return { id: uid(), nombre, botones, logos: Object.fromEntries([...ids].filter((id) => logos[id]).map((id) => [id, logos[id]])) };
+}
+
+function _copiarJuego(juego, logosActuales) {
+  const grupos = new Map();
+  const logos = {};
+  const nuevosIds = new Map(Object.entries(juego.logos).map(([id, src]) => {
+    const nuevo = Object.keys(logosActuales).find((clave) => logosActuales[clave] === src) || uid();
+    logos[nuevo] = src;
+    return [id, nuevo];
+  }));
+  const botones = JSON.parse(JSON.stringify(juego.botones));
+  botones.forEach((b) => {
+    b.id = uid();
+    if (b.grupoId) {
+      if (!grupos.has(b.grupoId)) grupos.set(b.grupoId, uid());
+      b.grupoId = grupos.get(b.grupoId);
+    }
+    [b.contenido, ...(b.contenido.bloques || [])].forEach((c) => {
+      if (nuevosIds.has(c.logoId)) c.logoId = nuevosIds.get(c.logoId);
+    });
+  });
+  return { botones, logos };
+}
+
+function _enlazarBibliotecaJuegos() {
+  const juegos = () => S.config.juegos ?? (S.config.juegos = []);
+  const dialogo = document.getElementById("biblioteca-juegos");
+  const selector = document.getElementById("juego-guardado");
+  const crear = document.getElementById("juego-crear");
+  const eliminar = document.getElementById("juego-eliminar");
+  const pintar = () => {
+    selector.innerHTML = juegos().map((j) => `<option value="${esc(j.id)}">${esc(j.nombre)} · ${j.botones.length} botones</option>`).join("");
+    crear.disabled = eliminar.disabled = !juegos().length;
+  };
+  document.getElementById("btn-guardar-juego").onclick = () => {
+    const hoja = _hojaActual();
+    if (!hoja.botones.length) return toast("Agrega botones antes de guardar el juego.");
+    const nombre = prompt("Nombre del juego", hoja.nombre)?.trim();
+    if (!nombre) return;
+    const anterior = juegos().findIndex((j) => j.nombre.toLowerCase() === nombre.toLowerCase());
+    if (anterior >= 0 && !confirm(`¿Actualizar el juego guardado «${nombre}»?`)) return;
+    const juego = _capturarJuego(hoja, S.logos, nombre);
+    if (anterior < 0) juegos().push(juego);
+    else juegos()[anterior] = juego;
+    Store.guardar();
+    toast("Juego guardado.");
+  };
+  document.getElementById("btn-cargar-juego").onclick = () => { pintar(); dialogo.showModal(); };
+  crear.onclick = () => {
+    const juego = juegos().find((j) => j.id === selector.value);
+    if (!juego) return;
+    const copia = _copiarJuego(juego, S.logos);
+    S = Store.crearHoja(juego.nombre);
+    Object.assign(S.logos, copia.logos);
+    _hojaActual().botones = copia.botones;
+    Store.guardar();
+    _seleccion = new Set();
+    dialogo.close();
+    _renderSelectorHojas();
+    _renderHoja();
+    _renderPanel();
+  };
+  eliminar.onclick = () => {
+    const indice = juegos().findIndex((j) => j.id === selector.value);
+    if (indice < 0 || !confirm(`¿Eliminar el juego guardado «${juegos()[indice].nombre}»?`)) return;
+    juegos().splice(indice, 1);
+    Store.guardar();
+    pintar();
+  };
+}
+
 function _enlazarToolbar() {
+  _enlazarBibliotecaJuegos();
+  for (const accion of ["deshacer", "rehacer"]) {
+    document.getElementById(`btn-${accion}`).onclick = () => {
+      const estado = Store[accion]();
+      if (!estado) return toast(`No hay cambios para ${accion}.`);
+      S = estado;
+      _seleccion = new Set();
+      document.getElementById("toasts").replaceChildren();
+      _renderSelectorHojas();
+      _renderHoja();
+      _renderPanel();
+    };
+  }
   document.getElementById("sel-hoja").onchange = (e) => {
     S = Store.setHojaActual(e.target.value);
     _seleccion = new Set();
@@ -198,6 +306,7 @@ function _enlazarToolbar() {
     reader.readAsText(file);
     e.target.value = "";
   };
+  document.getElementById("btn-calibrar").onclick = _imprimirPruebaEscala;
   document.getElementById("btn-imprimir").onclick = () => {
     if (!_hojaActual().botones.length) return toast("Esta hoja no tiene botones para imprimir.");
     const problemas = _revisarImpresion();
@@ -206,12 +315,46 @@ function _enlazarToolbar() {
   };
 }
 
+function _imprimirPruebaEscala() {
+  const prueba = document.createElement("section");
+  prueba.id = "prueba-escala";
+  prueba.innerHTML = `<h1>Prueba de escala</h1>
+    <p>Imprime al 100 % y mide entre marcas. Cada eje debe medir 50 mm.</p>
+    <svg viewBox="0 0 75 75" role="img" aria-label="Dos referencias perpendiculares de 50 milímetros">
+      <path d="M10 10H60 M10 10V60 M10 7V13 M60 7V13 M7 10H13 M7 60H13" fill="none" stroke="black" stroke-width=".25"/>
+      <text x="35" y="6" text-anchor="middle" font-size="3.5">50 mm</text>
+      <text x="14" y="38" font-size="3.5">50 mm</text>
+    </svg>`;
+  document.body.append(prueba);
+  document.body.classList.add("imprimiendo-calibracion");
+  window.addEventListener("afterprint", () => {
+    prueba.remove();
+    document.body.classList.remove("imprimiendo-calibracion");
+  }, { once: true });
+  window.print();
+}
+
 // ---------- Lienzo (hoja + botones + marcas de corte) ----------
 
 function _marcasHtml(botones) {
   const deCorte = botones.flatMap(marcasDeCorteBoton).map((m) => `<div class="marca-corte" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`);
   const deBorde = marcasDeBordeHoja(botones).map((m) => `<div class="marca-borde" style="left:${m.x}mm;top:${m.y}mm;width:${m.w}mm;height:${m.h}mm"></div>`);
   return deCorte.join("") + deBorde.join("");
+}
+
+function _bloqueFueraDelBoton(bloque, boton) {
+  const bordes = boton.getBoundingClientRect();
+  const rango = document.createRange();
+  rango.selectNodeContents(bloque);
+  const lineas = [...rango.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+  const path = boton.querySelector(".contorno-boton path");
+  const inversa = typeof path?.isPointInFill === "function" ? path.getScreenCTM()?.inverse() : null;
+  return lineas.some((rect) => {
+    if (rect.left < bordes.left - 1 || rect.right > bordes.right + 1 ||
+        rect.top < bordes.top - 1 || rect.bottom > bordes.bottom + 1) return true;
+    return inversa && [[rect.left,rect.top],[rect.right,rect.top],[rect.left,rect.bottom],[rect.right,rect.bottom]]
+      .some(([x,y]) => !path.isPointInFill(new DOMPoint(x,y).matrixTransform(inversa)));
+  });
 }
 
 function _revisarImpresion() {
@@ -223,8 +366,9 @@ function _revisarImpresion() {
     Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > tolerancia &&
     Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > tolerancia)).length;
   const recortados = [...document.querySelectorAll("#hoja .boton-print")].filter((el) =>
-    [...el.querySelectorAll(".boton-linea, .boton-numero")].some((linea) =>
-      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1)
+    [...el.querySelectorAll(".boton-linea, .boton-numero, .bloque-texto")].some((linea) =>
+      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1 ||
+      (linea.classList.contains("bloque-texto") && _bloqueFueraDelBoton(linea, el)))
   ).length;
   return [
     fuera && `${fuera} con desborde de la hoja`,
@@ -332,6 +476,149 @@ function _enlazarControlesTexto(prefijo, botones, refrescar, persistir) {
   document.getElementById(`${prefijo}-orientacion`).onchange = aplicar;
 }
 
+function _numeroAcotado(valor, defecto, min, max) {
+  const n = valor === "" || valor == null ? NaN : Number(valor);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : defecto;
+}
+
+function _puntosContorno(texto) {
+  const filas = String(texto ?? "").trim().split(/[\r\n;]+/);
+  if (filas.length < 3 || filas.length > 64) return null;
+  const puntos = filas.map((fila) => fila.trim().split(/\s*,\s*/).map((valor) => valor ? Number(valor) : NaN));
+  if (!puntos.every((p) => p.length === 2 && p.every((v) => Number.isFinite(v) && v >= 0 && v <= 100))) return null;
+  const area = puntos.reduce((total, [x,y], i) => {
+    const [sigX,sigY] = puntos[(i + 1) % puntos.length];
+    return total + x * sigY - sigX * y;
+  }, 0);
+  if (Math.abs(area) <= 0.01 || new Set(puntos.map((p) => p.join(","))).size !== puntos.length) return null;
+  const orientacion = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  for (let i = 0; i < puntos.length; i++) {
+    const a = puntos[i], b = puntos[(i + 1) % puntos.length];
+    for (let j = i + 2; j < puntos.length; j++) {
+      if (i === 0 && j === puntos.length - 1) continue;
+      const c = puntos[j], d = puntos[(j + 1) % puntos.length];
+      const solapa = [0, 1].every((eje) => Math.max(Math.min(a[eje], b[eje]), Math.min(c[eje], d[eje])) <=
+        Math.min(Math.max(a[eje], b[eje]), Math.max(c[eje], d[eje])));
+      if (solapa && orientacion(a,b,c) * orientacion(a,b,d) <= 0 && orientacion(c,d,a) * orientacion(c,d,b) <= 0) return null;
+    }
+  }
+  return puntos;
+}
+
+const PUNTOS_INICIALES = "50,0\n100,50\n50,100\n0,50";
+
+function _contornoEspecial(b) {
+  if (b.forma === "triangulo") return "M44 7 Q50 -2 56 7 L96 80 Q105 98 87 98 H13 Q-5 98 4 80 Z";
+  if (b.forma !== "personalizado") return "";
+  const puntos = _puntosContorno(b.puntosContorno ?? PUNTOS_INICIALES);
+  return puntos ? `M${puntos.map((p) => p.join(" ")).join(" L")} Z` : "";
+}
+
+function _resolverBloque(texto, c) {
+  const inferior = c.textoLiteral || !Number.isFinite(Number(c.numero))
+    ? c.abajo || "" : pluralizar(c.numero, c.abajo);
+  const valores = { "código": c.numero, prefijo: c.numeroPrefijo, superior: c.arriba, inferior };
+  return String(texto ?? "").replace(/\{(código|prefijo|superior|inferior)\}/g, (_, clave) => String(valores[clave] ?? ""));
+}
+
+function _bloquesLibresHTML(c) {
+  return c.bloques.map((b) => {
+    const x = _numeroAcotado(b.x, 50, 0, 100);
+    const y = _numeroAcotado(b.y, 50, 0, 100);
+    const ancho = _numeroAcotado(b.ancho, 90, 1, 100);
+    const tam = _numeroAcotado(b.tam, 4, 0.5, 50);
+    const giro = _numeroAcotado(b.giro, 0, -180, 180);
+    const pos = `left:${x}%;top:${y}%;width:${ancho}%;transform:translate(-50%,-50%) rotate(${giro}deg)`;
+    if (b.tipo === "linea") return `<span class="bloque-libre bloque-separador" style="${pos};height:${tam}mm"></span>`;
+    if (b.tipo === "logo") {
+      const src = S.logos[b.logoId];
+      return src ? `<span class="bloque-libre" style="${pos};height:${tam}mm"><img alt="" src="${esc(src)}"></span>` : "";
+    }
+    const alineacion = ["left", "center", "right"].includes(b.alineacion) ? b.alineacion : "center";
+    return `<span class="bloque-libre bloque-texto" style="${pos};font-size:${tam}mm;font-weight:${b.negrita === false ? 400 : 700};text-align:${alineacion}">${esc(_resolverBloque(b.texto, c))}</span>`;
+  }).join("");
+}
+
+function _bloquesIniciales(contenido) {
+  const lineas = [
+    [contenido.arriba, "{superior}"],
+    [contenido.numero != null && contenido.numero !== "", "{prefijo}{código}"],
+    [contenido.abajo, "{inferior}"],
+  ].filter(([visible]) => visible);
+  return lineas.map(([, texto], i) => ({ tipo:"texto", texto, x:50, y:100 * (i + 1) / (lineas.length + 1), ancho:90, tam:4, giro:0, negrita:true }));
+}
+
+function _editorComposicion(prefijo, c) {
+  return `<details class="opciones-texto">
+    <summary>Composición libre</summary>
+    <label class="campo"><span><input type="checkbox" id="${prefijo}-libre" ${c.composicionLibre ? "checked" : ""}> Usar bloques posicionables</span></label>
+    <div id="${prefijo}-bloques"></div>
+  </details>`;
+}
+
+function _enlazarComposicion(prefijo, botones, refrescar, persistir) {
+  const toggle = document.getElementById(`${prefijo}-libre`);
+  const panel = document.getElementById(`${prefijo}-bloques`);
+  const leer = () => botones()[0].contenido;
+  const aplicar = (cambio) => {
+    botones().forEach((b) => Object.assign(b.contenido, cambio));
+    refrescar();
+    persistir();
+  };
+  const campo = (b, nombre, etiqueta, defecto, min, max, paso) =>
+    `<label class="campo">${etiqueta}<input data-campo="${nombre}" type="number" min="${min}" max="${max}" step="${paso}" value="${_numeroAcotado(b[nombre], defecto, min, max)}"></label>`;
+  const pintar = () => {
+    const c = leer();
+    panel.hidden = !c.composicionLibre;
+    if (panel.hidden) return;
+    panel.innerHTML = `
+      <p class="muted">Posición X/Y en porcentaje desde la esquina superior izquierda hasta el centro del bloque. Para series usa {código} o {prefijo}.</p>
+      ${c.bloques.map((b, i) => `<fieldset class="bloque-campos" data-indice="${i}">
+        <legend>${b.tipo === "linea" ? "Separador" : b.tipo === "logo" ? "Imagen" : "Texto"} ${i + 1}</legend>
+        ${b.tipo === "texto" ? `<label class="campo">Texto<textarea rows="2" data-campo="texto">${esc(b.texto || "")}</textarea></label>
+        <label class="campo">Alineación<select data-campo="alineacion">${[["left","Izquierda"],["center","Centro"],["right","Derecha"]].map(([id,label]) => `<option value="${id}" ${(b.alineacion || "center") === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <label class="campo"><span><input type="checkbox" data-campo="negrita" ${b.negrita === false ? "" : "checked"}> Negrita</span></label>` : ""}
+        ${b.tipo === "logo" ? `<label class="campo">Imagen guardada<select data-campo="logoId"><option value="">Elegir imagen</option>${Object.keys(S.logos).map((id, n) => `<option value="${esc(id)}" ${b.logoId === id ? "selected" : ""}>Imagen ${n + 1}</option>`).join("")}</select></label>` : ""}
+        <div class="fila-2">${campo(b,"x","X (%)",50,0,100,0.5)}${campo(b,"y","Y (%)",50,0,100,0.5)}
+        ${campo(b,"ancho","Ancho (%)",90,1,100,0.5)}${campo(b,"tam",b.tipo === "linea" ? "Grosor (mm)" : b.tipo === "logo" ? "Alto (mm)" : "Tamaño (mm)",4,0.5,50,0.1)}
+        ${campo(b,"giro","Giro (°)",0,-180,180,1)}</div>
+        <button type="button" data-quitar="${i}" class="btn sm sec">Quitar bloque</button>
+      </fieldset>`).join("")}
+      <div class="barra-hoja">
+        <button type="button" data-agregar="texto" class="btn sm">+ Texto</button>
+        <button type="button" data-agregar="linea" class="btn sm">+ Separador</button>
+        <button type="button" data-agregar="logo" class="btn sm">+ Imagen</button>
+      </div>`;
+  };
+  toggle.onchange = () => {
+    aplicar({ composicionLibre: toggle.checked, bloques: leer().bloques ?? _bloquesIniciales(leer()) });
+    pintar();
+  };
+  panel.onchange = (e) => {
+    const input = e.target;
+    const nombre = input.dataset.campo;
+    if (!nombre) return;
+    const indice = Number(input.closest("fieldset").dataset.indice);
+    const bloques = leer().bloques.map((b, i) => i === indice ? { ...b, [nombre]: input.type === "checkbox"
+      ? input.checked : input.type === "number" ? _numeroAcotado(input.value, b[nombre], Number(input.min), Number(input.max)) : input.value } : b);
+    aplicar({ bloques });
+  };
+  panel.onclick = (e) => {
+    const boton = e.target.closest("button");
+    if (!boton) return;
+    const bloques = [...leer().bloques];
+    if (boton.dataset.agregar) {
+      const tipo = boton.dataset.agregar;
+      bloques.push({ tipo, texto:"", x:50, y:50, ancho:90, tam:tipo === "linea" ? 0.5 : tipo === "logo" ? 10 : 4, giro:0, negrita:true });
+    } else if (boton.dataset.quitar != null) {
+      bloques.splice(Number(boton.dataset.quitar), 1);
+    } else return;
+    aplicar({ bloques });
+    pintar();
+  };
+  pintar();
+}
+
 function _contenidoHTML(b) {
   const c = b.contenido;
   if (c.tipo === "logo") {
@@ -340,6 +627,7 @@ function _contenidoHTML(b) {
       <img src="${src}" style="transform: translate(${c.offsetX || 0}%, ${c.offsetY || 0}%) scale(${c.zoom || 1})">
     </div>`;
   }
+  if (c.composicionLibre && Array.isArray(c.bloques)) return _bloquesLibresHTML(c);
   // El plural automático es opcional y solo se aplica a códigos numéricos.
   const arriba = c.arriba || "";
   const abajo = c.textoLiteral || !Number.isFinite(Number(c.numero)) ? (c.abajo || "") : pluralizar(c.numero, c.abajo);
@@ -391,7 +679,11 @@ function _pintarBoton(el, b) {
   el.dataset.orientacion = b.contenido.tipo === "texto" ? _orientacionTexto(b.contenido.orientacionTexto) : "horizontal";
   el.style.padding = `${b.paddingVMm ?? 3}mm ${b.paddingHMm ?? 3}mm`;
   el.classList.toggle("seleccionado", _estaResaltado(b));
-  el.innerHTML = _contenidoHTML(b);
+  const contorno = _contornoEspecial(b);
+  el.dataset.contorno = contorno ? "especial" : "";
+  const guia = contorno ? `<svg class="contorno-boton" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="${contorno}" vector-effect="non-scaling-stroke"></path></svg>` : "";
+  if (contorno) el.style.setProperty("--fondo-contorno", b.fondo);
+  el.innerHTML = guia + _contenidoHTML(b);
   _ajustarTextoAncho(el);
 }
 
@@ -615,6 +907,7 @@ function _enlazarFormSeleccionMultiple() {
   document.getElementById("ms-color").onchange = persistir;
 
   _enlazarPlantillas("ms");
+  _enlazarContorno("ms", (puntos) => { seleccionados().forEach((b) => { b.puntosContorno = puntos; }); refrescarTodos(); persistir(); });
 
   document.getElementById("ms-eliminar").onclick = () => {
     if (!confirm(`¿Eliminar los ${seleccionados().length} botones seleccionados?`)) return;
@@ -637,6 +930,8 @@ const FORMAS = [
   ["circulo", "Círculo"],
   ["ovalo", "Óvalo"],
   ["capsula", "Cápsula (extremos semicirculares)"],
+  ["triangulo", "Triángulo redondeado"],
+  ["personalizado", "Contorno por puntos"],
 ];
 
 function _selectForma(id, valor) {
@@ -649,6 +944,129 @@ function _campoRadio(valor) {
 }
 
 // d = valores por defecto a precargar: { w, h, forma, radioMm }
+function _puntoEnContorno(svg, evento) {
+  const rect = svg.getBoundingClientRect();
+  const porcentaje = (valor, inicio, largo) => Math.round(clamp((valor - inicio) / largo * 100, 0, 100) * 10) / 10;
+  return [porcentaje(evento.clientX, rect.left, rect.width), porcentaje(evento.clientY, rect.top, rect.height)];
+}
+
+function _bordeMasCercano(puntos, punto) {
+  let menor = Infinity, borde = 0;
+  puntos.forEach(([x, y], i) => {
+    const [sigX, sigY] = puntos[(i + 1) % puntos.length];
+    const dx = sigX - x, dy = sigY - y;
+    const avance = clamp(((punto[0] - x) * dx + (punto[1] - y) * dy) / (dx * dx + dy * dy), 0, 1);
+    const distancia = Math.hypot(punto[0] - x - avance * dx, punto[1] - y - avance * dy);
+    if (distancia < menor) { menor = distancia; borde = i; }
+  });
+  return borde;
+}
+
+function _enlazarContorno(prefijo, aplicar) {
+  const forma = document.getElementById(`${prefijo}-forma`);
+  const contorno = document.getElementById(`${prefijo}-contorno`);
+  const wrap = document.getElementById(`${prefijo}-contorno-wrap`);
+  const ancho = document.getElementById(`${prefijo}-w`);
+  const alto = document.getElementById(`${prefijo}-h`);
+  const validar = () => {
+    wrap.hidden = forma.value !== "personalizado";
+    contorno.setCustomValidity(!wrap.hidden && !_puntosContorno(contorno.value) ? "Ingresa al menos tres puntos válidos que formen un área." : "");
+  };
+  const actualizarDiametro = (sincronizar) => {
+    const circulo = forma.value === "circulo";
+    ancho.labels[0].firstChild.textContent = circulo ? "Diámetro (mm)" : "Ancho (mm)";
+    alto.labels[0].hidden = circulo;
+    if (sincronizar && circulo && Number(ancho.value) >= 5 && alto.value !== ancho.value) {
+      alto.value = ancho.value;
+      alto.dispatchEvent(new Event("input"));
+      alto.dispatchEvent(new Event("change"));
+    }
+  };
+  forma.addEventListener("change", () => { validar(); actualizarDiametro(true); });
+  ancho.addEventListener("change", () => actualizarDiametro(true));
+  actualizarDiametro(false);
+  const dibujo = wrap.querySelector("svg");
+  const poligono = dibujo.querySelector("polygon");
+  const nodos = dibujo.querySelector("g");
+  const estado = wrap.querySelector("output");
+  let seleccionado = null;
+  let arrastre = null;
+  const dibujar = () => {
+    const puntos = arrastre?.puntos ?? _puntosContorno(contorno.value);
+    const w = Number(ancho.value), h = Number(alto.value);
+    dibujo.style.aspectRatio = `${w > 0 ? w : 1} / ${h > 0 ? h : 1}`;
+    poligono.setAttribute("points", puntos?.map((p) => p.join(",")).join(" ") || "");
+    nodos.innerHTML = puntos?.map(([x,y], i) => `<circle data-vertice="${i}" cx="${x}" cy="${y}" r="2.2" class="${i === seleccionado ? "activo" : ""}"></circle>`).join("") || "";
+    wrap.querySelector("[data-quitar-vertice]").disabled = seleccionado === null || !puntos || puntos.length < 4;
+    estado.textContent = puntos ? `${puntos.length} puntos. ${seleccionado === null ? "" : `Punto ${seleccionado + 1} seleccionado.`}` : "El contorno debe cerrar sin cruces.";
+  };
+  const confirmar = (puntos) => {
+    const texto = puntos.map((p) => p.join(",")).join("\n");
+    if (!_puntosContorno(texto)) {
+      estado.textContent = "No se aplicó el cambio. El contorno debe cerrar sin cruces.";
+      return false;
+    }
+    contorno.value = texto;
+    validar();
+    aplicar(texto);
+    return true;
+  };
+  dibujo.onpointerdown = (evento) => {
+    if (evento.button !== 0) return;
+    const puntos = _puntosContorno(contorno.value);
+    if (!puntos) return;
+    const vertice = evento.target.dataset.vertice;
+    if (vertice != null) {
+      seleccionado = Number(vertice);
+      arrastre = { id: evento.pointerId, puntos, movido: false };
+      dibujo.setPointerCapture(evento.pointerId);
+      dibujar();
+      return;
+    }
+    if (puntos.length >= 64) return;
+    const punto = _puntoEnContorno(dibujo, evento);
+    const indice = _bordeMasCercano(puntos, punto) + 1;
+    puntos.splice(indice, 0, punto);
+    if (confirmar(puntos)) { seleccionado = indice; dibujar(); }
+  };
+  dibujo.onpointermove = (evento) => {
+    if (!arrastre || evento.pointerId !== arrastre.id) return;
+    arrastre.movido = true;
+    arrastre.puntos[seleccionado] = _puntoEnContorno(dibujo, evento);
+    dibujar();
+  };
+  dibujo.onpointerup = (evento) => {
+    if (!arrastre || evento.pointerId !== arrastre.id) return;
+    const { puntos, movido } = arrastre;
+    arrastre = null;
+    dibujar();
+    if (movido && confirmar(puntos)) dibujar();
+  };
+  dibujo.onpointercancel = () => { arrastre = null; dibujar(); };
+  wrap.querySelector("[data-quitar-vertice]").onclick = () => {
+    const puntos = _puntosContorno(contorno.value);
+    if (!puntos || puntos.length < 4 || seleccionado === null) return;
+    puntos.splice(seleccionado, 1);
+    if (confirmar(puntos)) { seleccionado = null; dibujar(); }
+  };
+  wrap.querySelector("[data-ajustar-contorno]").onclick = () => {
+    const puntos = _puntosContorno(contorno.value);
+    if (!puntos) return;
+    const min = [0,1].map((i) => Math.min(...puntos.map((p) => p[i])));
+    const max = [0,1].map((i) => Math.max(...puntos.map((p) => p[i])));
+    if (confirmar(puntos.map((p) => p.map((v,i) => Math.round((v - min[i]) / (max[i] - min[i]) * 1000) / 10)))) dibujar();
+  };
+  [forma, ancho, alto].forEach((campo) => campo.addEventListener("change", dibujar));
+  contorno.oninput = () => { seleccionado = null; validar(); dibujar(); };
+  contorno.onchange = () => {
+    if (!contorno.reportValidity()) return;
+    aplicar(contorno.value);
+    dibujar();
+  };
+  validar();
+  dibujar();
+}
+
 function _bloqueFormaTamano(pfx, d) {
   d = d || {};
   return `
@@ -657,6 +1075,22 @@ function _bloqueFormaTamano(pfx, d) {
       <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="${d.h ?? 40}"></label>
     </div>
     <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
+    <section class="editor-contorno" id="${pfx}-contorno-wrap" ${d.forma === "personalizado" ? "" : "hidden"}>
+      <small>Haz clic para agregar un punto. Arrastra los puntos para ajustar el contorno.</small>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon></polygon><g></g></svg>
+      <div class="barra-hoja">
+        <button type="button" class="btn sm" data-quitar-vertice>Quitar punto</button>
+        <button type="button" class="btn sm" data-ajustar-contorno>Ajustar al ancho y alto</button>
+      </div>
+      <output aria-live="polite"></output>
+      <details>
+        <summary>Editar coordenadas</summary>
+        <label class="campo">Puntos del contorno (%)
+          <textarea id="${pfx}-contorno" rows="4" aria-describedby="${pfx}-contorno-ayuda">${esc(d.puntosContorno ?? PUNTOS_INICIALES)}</textarea>
+          <small id="${pfx}-contorno-ayuda">Escribe un punto X,Y por línea, en el orden del borde. Los valores van de 0 a 100.</small>
+        </label>
+      </details>
+    </section>
     <div class="fila-2">
       <label class="campo">Margen interior lateral (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
       <label class="campo">Margen interior vertical (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
@@ -713,12 +1147,15 @@ function _enlazarPlantillas(pfx) {
     campoW.value = p.w;
     campoH.value = p.h;
     campoForma.value = p.forma;
+    const campoContorno = document.getElementById(`${pfx}-contorno`);
+    campoContorno.value = p.puntosContorno ?? PUNTOS_INICIALES;
     if (campoRadio) campoRadio.value = p.radioMm || 0;
     if (campoPaddingH) campoPaddingH.value = p.paddingHMm ?? 3;
     if (campoPaddingV) campoPaddingV.value = p.paddingVMm ?? 3;
     // Dispara los eventos para que los listeners ya enganchados (vivos o no) reaccionen.
     [campoW, campoH].forEach((c) => { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); });
     campoForma.dispatchEvent(new Event("change"));
+    if (p.forma === "personalizado") campoContorno.dispatchEvent(new Event("change"));
     if (campoRadio) { campoRadio.dispatchEvent(new Event("input")); campoRadio.dispatchEvent(new Event("change")); }
     [campoPaddingH, campoPaddingV].forEach((c) => { if (c) { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); } });
     sel.value = "";
@@ -732,6 +1169,7 @@ function _enlazarPlantillas(pfx) {
         w: Number(document.getElementById(`${pfx}-w`).value),
         h: Number(document.getElementById(`${pfx}-h`).value),
         forma: document.getElementById(`${pfx}-forma`).value,
+        puntosContorno: document.getElementById(`${pfx}-contorno`).value,
         radioMm: Number(document.getElementById("c-radio")?.value) || 0,
         paddingHMm: Number(document.getElementById(`${pfx}-paddingh`)?.value) || 0,
         paddingVMm: Number(document.getElementById(`${pfx}-paddingv`)?.value) || 0,
@@ -744,6 +1182,7 @@ function _enlazarPlantillas(pfx) {
 }
 
 function _crearYSeleccionar(boton) {
+  if (boton.forma === "circulo") boton.h = boton.w;
   const pos = empacarPosicion(_hojaActual().botones, boton.w, boton.h);
   boton.x = pos.x;
   boton.y = pos.y;
@@ -788,7 +1227,7 @@ function _enlazarFormAgregar() {
 
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
-      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
+      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color, puntosContorno: u.puntosContorno,
       contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo, textoLiteral: u.textoLiteral ?? true, escalasTexto: u.escalasTexto, orientacionTexto: u.orientacionTexto },
     });
   };
@@ -811,6 +1250,7 @@ function _enlazarFormAgregar() {
 
   _renderLogosExistentesAgregar();
   _enlazarRadioToggle("l");
+  _enlazarContorno("l", () => {});
   _enlazarPlantillas("l");
 
   const listaInput = document.getElementById("l-lista");
@@ -828,8 +1268,9 @@ function _enlazarFormAgregar() {
     const numeros = leerCodigos();
     if (!numeros.length) return toast("Ingresa al menos un código o texto central.");
     const w = Number(document.getElementById("l-w").value);
-    const h = Number(document.getElementById("l-h").value);
     const forma = document.getElementById("l-forma").value;
+    const h = forma === "circulo" ? w : Number(document.getElementById("l-h").value);
+    const puntosContorno = document.getElementById("l-contorno").value;
     const radioMm = Number(document.getElementById("c-radio")?.value) || 3;
     const paddingHMm = Number(document.getElementById("l-paddingh")?.value) || 0;
     const paddingVMm = Number(document.getElementById("l-paddingv")?.value) || 0;
@@ -843,7 +1284,7 @@ function _enlazarFormAgregar() {
     let primero = null;
     numeros.forEach((n) => {
       const boton = {
-        id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId,
+        id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId, puntosContorno,
         contenido: { tipo: "texto", arriba, numero: n, numeroPrefijo, abajo, ...opcionesTexto },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
@@ -852,7 +1293,7 @@ function _enlazarFormAgregar() {
       S = Store.agregarBoton(_hojaActual().id, boton);
       if (!primero) primero = boton.id;
     });
-    S = Store.actualizarUltimoUsado({ arriba, abajo, numeroPrefijo, ...opcionesTexto, forma, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, numeroPrefijo, ...opcionesTexto, forma, puntosContorno, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
     _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
@@ -907,6 +1348,7 @@ function _bloqueEdicionTexto(c) {
     </div>
     <label class="campo">Texto abajo<input id="e-abajo" value="${esc(c.abajo || "")}"></label>
     ${_controlesTexto("e", c)}
+    ${_editorComposicion("e", c)}
   `;
 }
 
@@ -982,6 +1424,7 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-color").onchange = persistir;
 
   _enlazarPlantillas("e");
+  _enlazarContorno("e", (puntos) => { b.puntosContorno = puntos; refrescar(); persistir(); });
 
   if (b.contenido.tipo === "logo") {
     document.getElementById("e-zoom").oninput = (e) => {
@@ -1039,6 +1482,7 @@ function _enlazarFormEditar(b) {
     };
     document.getElementById("e-numero").onchange = persistir;
     _enlazarControlesTexto("e", () => [b], refrescar, persistir);
+    _enlazarComposicion("e", () => [b], refrescar, persistir);
   }
 }
 
@@ -1118,6 +1562,7 @@ function _formEditarGrupo(grupoId) {
       </div>
       <label class="campo">Texto abajo<input id="gr-abajo" value="${esc(base.contenido.abajo || "")}"></label>
       ${_controlesTexto("gr", base.contenido)}
+      ${_editorComposicion("gr", base.contenido)}
       ${_bloqueFormaTamano("gr", base)}
       ${_bloqueColores("gr", base)}
       <div class="chips">
@@ -1163,6 +1608,7 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-numero-prefijo").oninput = (e) => { miembros().forEach((m) => (m.contenido.numeroPrefijo = e.target.value)); refrescarTodos(); };
   document.getElementById("gr-numero-prefijo").onchange = persistir;
   _enlazarControlesTexto("gr", miembros, refrescarTodos, persistir);
+  _enlazarComposicion("gr", miembros, refrescarTodos, persistir);
 
   document.getElementById("gr-w").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.w = v)); refrescarTodos(); };
   document.getElementById("gr-w").onchange = persistir;
@@ -1191,6 +1637,7 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-color").onchange = persistir;
 
   _enlazarPlantillas("gr");
+  _enlazarContorno("gr", (puntos) => { miembros().forEach((b) => { b.puntosContorno = puntos; }); refrescarTodos(); persistir(); });
 
   document.getElementById("gr-numeros").onchange = (e) => {
     const nuevos = _codigosBoton(e.target.value);
@@ -1202,7 +1649,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     nuevos.forEach((n) => {
       if (actualesNums.includes(n)) return;
       const nuevoBoton = {
-        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
+        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId, puntosContorno: base.puntosContorno,
         contenido: { ...base.contenido, numero: n },
       };
       const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);
@@ -1626,6 +2073,8 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
+
 
 
 

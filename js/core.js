@@ -1,8 +1,6 @@
 // Helpers puros / lógica de negocio. No toca el DOM directamente (eso vive en
 // vistas.js). Todo lo que exponga este archivo queda disponible en el mismo
 // scope global para vistas.js y app.js (sin imports, scripts clásicos).
-const APP_VERSION = "0.14.0";
-
 // Tamaño de hoja carta en mm y margen de seguridad para las marcas de corte.
 const HOJA_ANCHO_MM = 215.9;
 const HOJA_ALTO_MM = 279.4;
@@ -409,4 +407,5 @@ function parseListaNumeros(texto) {
     .map(Number)
     .filter((n) => !Number.isNaN(n));
 }
+
 
