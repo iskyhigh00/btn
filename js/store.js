@@ -277,27 +277,200 @@ const Store = (function () {
     return JSON.stringify(_estado, null, 2);
   }
 
+  function esRegistro(valor) {
+    return valor !== null && typeof valor === "object" && !Array.isArray(valor);
+  }
+
+  function validarObjeto(valor, etiqueta) {
+    if (!esRegistro(valor)) throw new Error(`Falta un objeto válido en ${etiqueta}.`);
+  }
+
+  function validarCampos(objeto, etiqueta) {
+    const numeros = ["x", "y", "w", "h", "radioMm", "paddingHMm", "paddingVMm",
+      "offsetX", "offsetY", "zoom", "anchoMm", "altoMm", "ancho", "tam", "giro"];
+    for (const campo of numeros) {
+      if (objeto[campo] != null && !Number.isFinite(objeto[campo])) {
+        throw new Error(`El campo ${campo} de ${etiqueta} debe ser un número.`);
+      }
+    }
+    for (const campo of ["fondo", "color"]) {
+      if (objeto[campo] != null && !/^#[\da-f]{6}$/i.test(objeto[campo])) {
+        throw new Error(`El campo ${campo} de ${etiqueta} debe ser un color hexadecimal.`);
+      }
+    }
+  }
+
+  function validarBoton(boton, etiqueta) {
+    validarObjeto(boton, etiqueta);
+    validarCampos(boton, etiqueta);
+    if (![boton.x, boton.y, boton.w, boton.h].every(Number.isFinite) || boton.w <= 0 || boton.h <= 0) {
+      throw new Error(`La posición o el tamaño de un botón de ${etiqueta} no es válido.`);
+    }
+    const contenido = boton.contenido;
+    validarObjeto(contenido, `el contenido de un botón de ${etiqueta}`);
+    if (contenido.tipo !== undefined && !["texto", "logo"].includes(contenido.tipo)) {
+      throw new Error(`Hay un botón de tipo desconocido en ${etiqueta}.`);
+    }
+    validarCampos(contenido, etiqueta);
+    if (contenido.bloques != null && !Array.isArray(contenido.bloques)) {
+      throw new Error(`Los bloques de un botón de ${etiqueta} deben ser una lista.`);
+    }
+    (contenido.bloques || []).forEach((bloque) => {
+      validarObjeto(bloque, `un bloque de ${etiqueta}`);
+      validarCampos(bloque, etiqueta);
+    });
+    if (contenido.composicionLibre && contenido.bloques == null) contenido.bloques = [];
+    if (contenido.tipo === undefined) contenido.tipo = contenido.logoId ? "logo" : "texto";
+  }
+
+  function listaImportada(valor, etiqueta) {
+    if (valor == null) return [];
+    if (!Array.isArray(valor)) throw new Error(`La sección ${etiqueta} debe ser una lista.`);
+    return valor;
+  }
+
+  function validarProyecto(nuevo) {
+    validarObjeto(nuevo, "el proyecto");
+    if (!Array.isArray(nuevo.hojas) || !nuevo.hojas.length) {
+      throw new Error("El respaldo debe contener al menos una hoja.");
+    }
+    nuevo.hojas.forEach((hoja) => {
+      validarObjeto(hoja, "una hoja");
+      if (typeof hoja.nombre !== "string" || !Array.isArray(hoja.botones)) {
+        throw new Error("Cada hoja debe tener un nombre y una lista de botones.");
+      }
+      hoja.botones.forEach((boton) => validarBoton(boton, hoja.nombre));
+    });
+    if (nuevo.config != null) {
+      validarObjeto(nuevo.config, "la configuración");
+      if (nuevo.config.ultimoUsado != null) {
+        validarObjeto(nuevo.config.ultimoUsado, "el último formato usado");
+        validarCampos(nuevo.config.ultimoUsado, "el último formato usado");
+      }
+      listaImportada(nuevo.config.juegos, "juegos").forEach((juego) => {
+        validarObjeto(juego, "un juego");
+        if (typeof juego.nombre !== "string" || !Array.isArray(juego.botones)) {
+          throw new Error("Cada juego debe tener un nombre y una lista de botones.");
+        }
+        juego.botones.forEach((boton) => validarBoton(boton, juego.nombre));
+      });
+    }
+    if (nuevo.panel != null) {
+      validarObjeto(nuevo.panel, "el panel");
+      validarCampos(nuevo.panel, "el panel");
+      if (nuevo.panel.celdas != null) {
+        validarObjeto(nuevo.panel.celdas, "las celdas del panel");
+        Object.values(nuevo.panel.celdas).forEach((celda) => validarObjeto(celda, "una celda del panel"));
+      }
+    }
+    listaImportada(nuevo.plantillas, "plantillas").forEach((plantilla) => {
+      validarObjeto(plantilla, "una plantilla");
+      if (typeof plantilla.nombre !== "string") throw new Error("Cada plantilla debe tener un nombre.");
+      validarCampos(plantilla, plantilla.nombre);
+    });
+    return _completar(nuevo);
+  }
+
+  function copiarLogos(logos, destino) {
+    if (logos != null) validarObjeto(logos, "las imágenes");
+    const porImagen = new Map(Object.entries(destino).map(([id, imagen]) => [imagen, id]));
+    const ids = new Map();
+    for (const [anterior, imagen] of Object.entries(logos ?? {})) {
+      if (typeof imagen !== "string" || !/^data:image\/[a-z0-9.+-]+;base64,[a-z\d+/]+={0,2}$/i.test(imagen)) {
+        throw new Error("El respaldo contiene una imagen sin un formato compatible.");
+      }
+      let id = porImagen.get(imagen);
+      if (!id) {
+        id = uid();
+        destino[id] = imagen;
+        porImagen.set(imagen, id);
+      }
+      ids.set(anterior, id);
+    }
+    return ids;
+  }
+
+  function copiarBotones(botones, logos) {
+    const grupos = new Map();
+    return botones.map((boton) => {
+      const contenido = { ...boton.contenido };
+      if (contenido.logoId != null) contenido.logoId = logos.get(String(contenido.logoId)) || "";
+      if (Array.isArray(contenido.bloques)) {
+        contenido.bloques = contenido.bloques.map((bloque) => {
+          const copia = { ...bloque };
+          if (copia.logoId != null) copia.logoId = logos.get(String(copia.logoId)) || "";
+          return copia;
+        });
+      }
+      const copia = { ...boton, id: uid(), contenido };
+      if (boton.grupoId) {
+        if (!grupos.has(boton.grupoId)) grupos.set(boton.grupoId, uid());
+        copia.grupoId = grupos.get(boton.grupoId);
+      }
+      return copia;
+    });
+  }
+
+  function asignarNombre(nombre, usados) {
+    let candidato = nombre;
+    for (let numero = 2; usados.has(candidato.toLowerCase()); numero++) {
+      candidato = `${nombre} (${numero})`;
+    }
+    usados.add(candidato.toLowerCase());
+    return candidato;
+  }
+
   function importarJSON(json, modo) {
     let nuevo;
     try {
       nuevo = JSON.parse(json);
     } catch (e) {
       toast("El archivo no es un JSON válido.");
-      return _estado;
+      return null;
     }
-    if (!nuevo || !Array.isArray(nuevo.hojas)) {
-      toast("El JSON no tiene el formato esperado.");
-      return _estado;
+
+    try {
+      validarProyecto(nuevo);
+      const agregar = modo === "agregar";
+      const logos = agregar ? { ..._estado.logos } : {};
+      const idsLogo = copiarLogos(nuevo.logos, logos);
+
+      const hojas = agregar ? [..._estado.hojas] : [];
+      const nombresHojas = new Set(hojas.map((h) => h.nombre.toLowerCase()));
+      const nuevas = nuevo.hojas.map((h) => ({
+        ...h,
+        id: uid(),
+        nombre: agregar ? asignarNombre(h.nombre, nombresHojas) : h.nombre,
+        botones: copiarBotones(h.botones, idsLogo),
+      }));
+      const indice = nuevo.hojas.findIndex((h) => h.id === nuevo.hojaActualId);
+      const hojaActualId = nuevas[Math.max(0, indice)].id;
+
+      const plantillas = agregar ? [..._estado.plantillas] : [];
+      const nombresPlantillas = new Set(plantillas.map((p) => p.nombre.toLowerCase()));
+      listaImportada(nuevo.plantillas, "plantillas").forEach((p) => plantillas.push({
+        ...p, id: uid(), nombre: agregar ? asignarNombre(p.nombre, nombresPlantillas) : p.nombre,
+      }));
+
+      const juegos = agregar ? [...(_estado.config.juegos || [])] : [];
+      const nombresJuegos = new Set(juegos.map((j) => j.nombre.toLowerCase()));
+      listaImportada(nuevo.config.juegos, "juegos").forEach((j) => {
+        const imagenes = {};
+        const ids = copiarLogos(j.logos, imagenes);
+        juegos.push({
+          ...j, id: uid(),
+          nombre: agregar ? asignarNombre(j.nombre, nombresJuegos) : j.nombre,
+          botones: copiarBotones(j.botones, ids), logos: imagenes,
+        });
+      });
+
+      const base = agregar ? _estado : nuevo;
+      const config = { ...base.config, juegos };
+      return _guardar(_estado = { ...base, config, logos, hojas: [...hojas, ...nuevas], hojaActualId, plantillas });
+    } catch (e) {
+      toast(e.message || "El archivo no tiene el formato esperado.");
+      return null;
     }
-    if (modo === "reemplazar") {
-      _estado = _completar(nuevo);
-    } else {
-      // agregar: mete las hojas nuevas y sus logos, sin pisar lo existente
-      nuevo.hojas.forEach((h) => _estado.hojas.push(h));
-      Object.assign(_estado.logos, nuevo.logos || {});
-      _estado.hojaActualId = nuevo.hojas[0]?.id || _estado.hojaActualId;
-    }
-    return _guardar(_estado);
   }
 
   return {
@@ -310,5 +483,3 @@ const Store = (function () {
     exportarJSON, importarJSON,
   };
 })();
-
-
