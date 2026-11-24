@@ -73,6 +73,7 @@ function autoPluralizar(palabra) {
 // automático), o el texto sin cambios si no hay número. El plural nunca se
 // pide al usuario: se calcula solo.
 function pluralizar(numero, texto) {
+  if (/^\s*por\s+l[ií]neas?\s*$/i.test(texto)) return texto.replace(/s(?=\s*$)/i, "");
   if (numero == null || numero === "") return texto || "";
   return Math.abs(Number(numero)) === 1 ? (texto || "") : autoPluralizar(texto);
 }
