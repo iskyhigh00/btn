@@ -44,16 +44,32 @@ function vistaInicio() {
       <section class="lienzo-wrap">
         <div class="aviso-impresion">Para imprimir, usa <b>márgenes: ninguno</b> y <b>escala: 100 %</b>. <span id="estado-impresion" role="status"></span></div>
         <div class="lienzo-toolbar card">
-          <select id="sel-hoja"></select>
-          <button class="btn sm" id="btn-hoja-nueva">+ Hoja</button>
-          <button class="btn sm" id="btn-hoja-renombrar">Renombrar</button>
-          <button class="btn sm" id="btn-hoja-duplicar">Duplicar</button>
-          <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
-          <button class="btn sm" id="btn-reorganizar">↻ Reorganizar</button>
+          <div class="barra-hoja">
+            <label class="zoom-label" for="sel-hoja">Hoja</label>
+            <select id="sel-hoja"></select>
+            <details class="menu-editor">
+              <summary class="btn sm">Gestionar hojas</summary>
+              <div class="menu-editor-opciones">
+                <button class="btn sm" id="btn-hoja-nueva">Nueva hoja</button>
+                <button class="btn sm" id="btn-hoja-renombrar">Renombrar hoja</button>
+                <button class="btn sm" id="btn-hoja-duplicar">Duplicar hoja completa</button>
+                <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
+              </div>
+            </details>
+          </div>
+          <div class="barra-hoja">
+            <button class="btn sm" id="btn-duplicar-seleccion" disabled>Duplicar selección</button>
+            <button class="btn sm" id="btn-reorganizar">Reorganizar botones</button>
+          </div>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
-          <button class="btn sm" id="btn-exportar">Exportar JSON</button>
-          <button class="btn sm" id="btn-importar">Importar JSON</button>
+          <details class="menu-editor">
+            <summary class="btn sm">Archivo</summary>
+            <div class="menu-editor-opciones">
+              <button class="btn sm" id="btn-exportar">Exportar proyecto JSON</button>
+              <button class="btn sm" id="btn-importar">Importar proyecto JSON</button>
+            </div>
+          </details>
           <input type="file" id="input-importar" accept="application/json" style="display:none">
           <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
@@ -116,6 +132,16 @@ function _enlazarToolbar() {
     _renderHoja();
     _renderPanel();
   };
+  document.getElementById("btn-duplicar-seleccion").onclick = _duplicarSeleccion;
+  document.querySelectorAll(".menu-editor").forEach((menu) => {
+    menu.addEventListener("click", (e) => { if (e.target.closest("button")) menu.open = false; });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && menu.open) {
+        menu.open = false;
+        menu.querySelector("summary").focus();
+      }
+    });
+  });
   document.getElementById("btn-reorganizar").onclick = () => {
     const hoja = _hojaActual();
     if (!hoja.botones.length) return toast("Agrega botones a la hoja para reorganizarlos.");
@@ -257,11 +283,27 @@ function _escalaTexto(valor) {
   return Math.max(50, Math.min(150, Number(valor) || 100));
 }
 
+const ORIENTACIONES_TEXTO = [
+  ["horizontal", "Horizontal"],
+  ["vertical", "Girado 90° hacia abajo"],
+  ["vertical-inverso", "Girado 90° hacia arriba"],
+  ["apilado", "Letras una debajo de otra"],
+];
+
+function _orientacionTexto(valor) {
+  return ORIENTACIONES_TEXTO.some(([id]) => id === valor) ? valor : "horizontal";
+}
+
 function _controlesTexto(prefijo, contenido, literalPorDefecto = false) {
   const literal = contenido.textoLiteral ?? literalPorDefecto;
   return `
+    <label class="campo">Orientación del texto
+      <select id="${prefijo}-orientacion">${ORIENTACIONES_TEXTO.map(([id, nombre]) =>
+        `<option value="${id}" ${_orientacionTexto(contenido.orientacionTexto) === id ? "selected" : ""}>${nombre}</option>`
+      ).join("")}</select>
+    </label>
     <details class="opciones-texto">
-      <summary>Tipografía y texto literal</summary>
+      <summary>Tamaño de las letras y plural</summary>
       <label class="campo"><span><input id="${prefijo}-literal" type="checkbox" ${literal ? "checked" : ""}> Mantener el texto inferior tal como se escribe</span></label>
       ${[["arriba", "Superior"], ["centro", "Central"], ["abajo", "Inferior"]].map(([rol, etiqueta]) => `
         <label class="campo">${etiqueta} (%)<input id="${prefijo}-escala-${rol}" type="number" min="50" max="150" step="1" value="${_escalaTexto(contenido.escalasTexto?.[rol])}"></label>
@@ -271,6 +313,7 @@ function _controlesTexto(prefijo, contenido, literalPorDefecto = false) {
 
 function _leerControlesTexto(prefijo) {
   return {
+    orientacionTexto: _orientacionTexto(document.getElementById(`${prefijo}-orientacion`).value),
     textoLiteral: document.getElementById(`${prefijo}-literal`).checked,
     escalasTexto: Object.fromEntries(["arriba", "centro", "abajo"].map((rol) => [
       rol, _escalaTexto(document.getElementById(`${prefijo}-escala-${rol}`).value),
@@ -279,12 +322,14 @@ function _leerControlesTexto(prefijo) {
 }
 
 function _enlazarControlesTexto(prefijo, botones, refrescar, persistir) {
-  document.getElementById(`${prefijo}-literal`).closest("details").onchange = () => {
+  const aplicar = () => {
     const opciones = _leerControlesTexto(prefijo);
     botones().forEach((b) => Object.assign(b.contenido, opciones));
     refrescar();
     persistir();
   };
+  document.getElementById(`${prefijo}-literal`).closest("details").onchange = aplicar;
+  document.getElementById(`${prefijo}-orientacion`).onchange = aplicar;
 }
 
 function _contenidoHTML(b) {
@@ -302,7 +347,8 @@ function _contenidoHTML(b) {
   // El tamaño de letra se calcula sobre el alto ÚTIL (descontando el padding
   // vertical), no el alto total del botón: así "separación arriba/abajo" se
   // nota siempre, aunque el texto sea corto y nunca llegara a desbordar.
-  const altoUtil = Math.max(4, b.h - 2 * (b.paddingVMm ?? 3));
+  const vertical = _orientacionTexto(c.orientacionTexto) !== "horizontal";
+  const altoUtil = Math.max(4, vertical ? b.w - 2 * (b.paddingHMm ?? 3) : b.h - 2 * (b.paddingVMm ?? 3));
   // Cuantas menos líneas tenga el botón, más grande puede ir cada una: un
   // botón de una sola línea ("SERVICIO") no debe verse chico como si fuera
   // la etiqueta superior de un diseño de 3 líneas.
@@ -341,7 +387,8 @@ function _pintarBoton(el, b) {
   el.style.height = `${b.h}mm`;
   el.style.background = b.fondo;
   el.style.color = b.color;
-  el.style.borderRadius = formaRadioCss(b);
+  el.style.borderRadius = b.forma === "capsula" ? "999mm" : formaRadioCss(b);
+  el.dataset.orientacion = b.contenido.tipo === "texto" ? _orientacionTexto(b.contenido.orientacionTexto) : "horizontal";
   el.style.padding = `${b.paddingVMm ?? 3}mm ${b.paddingHMm ?? 3}mm`;
   el.classList.toggle("seleccionado", _estaResaltado(b));
   el.innerHTML = _contenidoHTML(b);
@@ -353,7 +400,10 @@ function _pintarBoton(el, b) {
 function _ajustarTextoAncho(el) {
   el.querySelectorAll(".boton-linea, .boton-numero").forEach((linea) => {
     let intentos = 0;
-    while (linea.scrollWidth > linea.clientWidth + 0.5 && intentos < 40) {
+    const desborda = () => el.dataset.orientacion === "horizontal"
+      ? linea.scrollWidth > linea.clientWidth + 0.5
+      : linea.scrollHeight > linea.clientHeight + 0.5;
+    while (desborda() && intentos < 40) {
       const actual = parseFloat(linea.style.fontSize) || 3;
       const nuevo = actual * 0.92;
       if (nuevo < 1.5) break; // no bajar de ~1.5mm, quedaría ilegible
@@ -473,14 +523,25 @@ function _manejarBorradoTeclado() {
 
 // ---------- Panel lateral (agregar / editar botón / editar grupo) ----------
 
+function _duplicarSeleccion() {
+  const boton = _botonSeleccionado();
+  if (boton?.grupoId) return _duplicarGrupo(boton.grupoId);
+  const botones = _hojaActual().botones.filter((b) => _seleccion.has(b.id));
+  _duplicarBloque(botones, boton ? "Botón duplicado" : "Selección duplicada", false);
+}
+
 function _renderPanel() {
+  const seleccionado = _botonSeleccionado();
+  const duplicar = document.getElementById("btn-duplicar-seleccion");
+  duplicar.disabled = !_seleccion.size;
+  duplicar.textContent = seleccionado ? (seleccionado.grupoId ? "Duplicar grupo" : "Duplicar botón") : "Duplicar selección";
   const panel = document.getElementById("panel");
   if (_seleccion.size > 1) {
     panel.innerHTML = _formSeleccionMultiple();
     _enlazarFormSeleccionMultiple();
     return;
   }
-  const b = _botonSeleccionado();
+  const b = seleccionado;
   if (b && b.grupoId) {
     panel.innerHTML = _formEditarGrupo(b.grupoId);
     _enlazarFormEditarGrupo(b.grupoId);
@@ -571,10 +632,11 @@ function _miembrosGrupo(grupoId) {
 }
 
 const FORMAS = [
-  ["cuadrado", "Cuadrado"],
+  ["cuadrado", "Rectángulo o cuadrado"],
   ["redondeado", "Bordes redondeados"],
   ["circulo", "Círculo"],
   ["ovalo", "Óvalo"],
+  ["capsula", "Cápsula (extremos semicirculares)"],
 ];
 
 function _selectForma(id, valor) {
@@ -596,8 +658,8 @@ function _bloqueFormaTamano(pfx, d) {
     </div>
     <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
     <div class="fila-2">
-      <label class="campo">Separación izq/der (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
-      <label class="campo">Separación arriba/abajo (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
+      <label class="campo">Margen interior lateral (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
+      <label class="campo">Margen interior vertical (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
     </div>
     <div id="${pfx}-radio-wrap" style="display:${(d.forma ?? "cuadrado") === "redondeado" ? "" : "none"}">${_campoRadio(d.radioMm)}</div>
     <div class="fila-plantilla">
@@ -727,7 +789,7 @@ function _enlazarFormAgregar() {
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
       id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
-      contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo, textoLiteral: u.textoLiteral ?? true, escalasTexto: u.escalasTexto },
+      contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo, textoLiteral: u.textoLiteral ?? true, escalasTexto: u.escalasTexto, orientacionTexto: u.orientacionTexto },
     });
   };
 
@@ -826,12 +888,12 @@ function _formEditar(b) {
       <button class="btn sm sec" id="e-cerrar">✕ Cerrar</button>
     </div>
     <div class="panel-form">
+      ${esLogo ? _bloqueEdicionLogo(c) : _bloqueEdicionTexto(c)}
       ${_bloqueFormaTamano("e", b)}
       ${_bloqueColores("e", b)}
-      ${esLogo ? _bloqueEdicionLogo(c) : _bloqueEdicionTexto(c)}
       <div class="fila-2">
-        <button class="btn" id="e-duplicar">Duplicar</button>
-        <button class="btn sec" id="e-eliminar">Eliminar</button>
+        <button class="btn" id="e-duplicar">Duplicar botón</button>
+        <button class="btn sec" id="e-eliminar">Eliminar botón</button>
       </div>
     </div>`;
 }
@@ -869,10 +931,7 @@ function _enlazarFormEditar(b) {
     _renderPanel();
   };
 
-  document.getElementById("e-duplicar").onclick = () => {
-    S = Store.duplicarBoton(hojaId, b.id);
-    _renderHoja();
-  };
+  document.getElementById("e-duplicar").onclick = _duplicarSeleccion;
   document.getElementById("e-eliminar").onclick = () => {
     if (!confirm("¿Eliminar este botón?")) return;
     S = Store.eliminarBoton(hojaId, b.id);
@@ -890,6 +949,7 @@ function _enlazarFormEditar(b) {
       arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
       abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
       numeroPrefijo: b.contenido.tipo === "texto" ? b.contenido.numeroPrefijo : undefined,
+      orientacionTexto: b.contenido.orientacionTexto,
       textoLiteral: b.contenido.textoLiteral,
       escalasTexto: b.contenido.escalasTexto,
     });
@@ -1004,21 +1064,28 @@ function _posicionCopiaGrupo(botones, ancho, alto) {
 }
 
 function _duplicarGrupo(grupoId) {
-  const hoja = _hojaActual();
-  const originales = hoja.botones.filter((b) => b.grupoId === grupoId);
+  const originales = _hojaActual().botones.filter((b) => b.grupoId === grupoId);
+  _duplicarBloque(originales, "Grupo duplicado", true);
+}
+
+function _duplicarBloque(originales, mensaje, seleccionarGrupo) {
   if (!originales.length) return;
+  const hoja = _hojaActual();
   const x = Math.min(...originales.map((b) => b.x));
   const y = Math.min(...originales.map((b) => b.y));
   const ancho = Math.max(...originales.map((b) => b.x + b.w)) - x;
   const alto = Math.max(...originales.map((b) => b.y + b.h)) - y;
 
-  const nuevoGrupoId = uid();
+  const grupos = new Map();
   const copias = JSON.parse(JSON.stringify(originales));
   const posicion = _posicionCopiaGrupo(hoja.botones, ancho, alto);
   const destino = posicion || { x: MARGEN_HOJA_MM, y: MARGEN_HOJA_MM };
   copias.forEach((b) => {
     b.id = uid();
-    b.grupoId = nuevoGrupoId;
+    if (b.grupoId) {
+      if (!grupos.has(b.grupoId)) grupos.set(b.grupoId, uid());
+      b.grupoId = grupos.get(b.grupoId);
+    }
     b.x = destino.x + (b.x - x);
     b.y = destino.y + (b.y - y);
   });
@@ -1026,11 +1093,11 @@ function _duplicarGrupo(grupoId) {
   if (!posicion) S = Store.crearHoja();
   _hojaActual().botones.push(...copias);
   S = Store.guardar();
-  _seleccion = new Set([copias[0].id]);
+  _seleccion = new Set(seleccionarGrupo ? [copias[0].id] : copias.map((b) => b.id));
   _renderSelectorHojas();
   _renderHoja();
   _renderPanel();
-  toast(posicion ? "Grupo duplicado." : "Grupo duplicado en una hoja nueva.");
+  toast(posicion ? `${mensaje}.` : `${mensaje} en una hoja nueva.`);
 }
 
 function _formEditarGrupo(grupoId) {
@@ -1083,6 +1150,7 @@ function _enlazarFormEditarGrupo(grupoId) {
       Store.actualizarUltimoUsado({
         forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
         arriba: base.contenido.arriba, abajo: base.contenido.abajo, numeroPrefijo: base.contenido.numeroPrefijo,
+        orientacionTexto: base.contenido.orientacionTexto,
         textoLiteral: base.contenido.textoLiteral, escalasTexto: base.contenido.escalasTexto,
       });
     }
@@ -1558,6 +1626,7 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
 
 
 
