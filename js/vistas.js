@@ -44,19 +44,48 @@ function vistaInicio() {
       <section class="lienzo-wrap">
         <div class="aviso-impresion">Para imprimir, usa <b>márgenes: ninguno</b> y <b>escala: 100 %</b>. <span id="estado-impresion" role="status"></span></div>
         <div class="lienzo-toolbar card">
-          <select id="sel-hoja"></select>
-          <button class="btn sm" id="btn-hoja-nueva">+ Hoja</button>
-          <button class="btn sm" id="btn-hoja-renombrar">Renombrar</button>
-          <button class="btn sm" id="btn-hoja-duplicar">Duplicar</button>
-          <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
-          <button class="btn sm" id="btn-reorganizar">↻ Reorganizar</button>
+          <div class="barra-hoja">
+            <label class="zoom-label" for="sel-hoja">Hoja</label>
+            <select id="sel-hoja"></select>
+            <details class="menu-editor">
+              <summary class="btn sm">Gestionar hojas</summary>
+              <div class="menu-editor-opciones">
+                <button class="btn sm" id="btn-hoja-nueva">Nueva hoja</button>
+                <button class="btn sm" id="btn-hoja-renombrar">Renombrar hoja</button>
+                <button class="btn sm" id="btn-hoja-duplicar">Duplicar hoja completa</button>
+                <button class="btn sm" id="btn-guardar-juego">Guardar hoja como juego</button>
+                <button class="btn sm" id="btn-cargar-juego">Abrir biblioteca de juegos</button>
+                <button class="btn sm sec" id="btn-hoja-eliminar">Eliminar hoja</button>
+              </div>
+            </details>
+          </div>
+          <div class="barra-hoja">
+            <button class="btn sm" id="btn-duplicar-seleccion" disabled>Duplicar selección</button>
+            <button class="btn sm" id="btn-reorganizar">Reorganizar botones</button>
+          </div>
           <span class="spacer"></span>
           <label class="zoom-label">Zoom <input type="range" id="zoom" min="0.3" max="1.3" step="0.05" value="${_zoom}"></label>
-          <button class="btn sm" id="btn-exportar">Exportar JSON</button>
-          <button class="btn sm" id="btn-importar">Importar JSON</button>
+          <details class="menu-editor">
+            <summary class="btn sm">Archivo</summary>
+            <div class="menu-editor-opciones">
+              <button class="btn sm" id="btn-exportar">Exportar proyecto JSON</button>
+              <button class="btn sm" id="btn-importar">Importar proyecto JSON</button>
+            </div>
+          </details>
           <input type="file" id="input-importar" accept="application/json" style="display:none">
           <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
+        <dialog id="biblioteca-juegos">
+          <form method="dialog" class="panel-form">
+            <h3>Biblioteca de juegos</h3>
+            <label class="campo">Juego guardado<select id="juego-guardado"></select></label>
+            <div class="barra-hoja">
+              <button class="btn" type="button" id="juego-crear">Crear hoja desde juego</button>
+              <button class="btn sec" type="button" id="juego-eliminar">Eliminar juego guardado</button>
+              <button class="btn sec">Cerrar</button>
+            </div>
+          </form>
+        </dialog>
         <div class="lienzo-scroll">
           <div class="hoja" id="hoja" style="transform:scale(${_zoom})"></div>
         </div>
@@ -78,7 +107,87 @@ function _renderSelectorHojas() {
     .join("");
 }
 
+function _capturarJuego(hoja, logos, nombre) {
+  const botones = JSON.parse(JSON.stringify(hoja.botones));
+  const ids = new Set();
+  botones.forEach(({ contenido }) => {
+    if (contenido.logoId) ids.add(contenido.logoId);
+    (contenido.bloques || []).forEach((b) => { if (b.logoId) ids.add(b.logoId); });
+  });
+  return { id: uid(), nombre, botones, logos: Object.fromEntries([...ids].filter((id) => logos[id]).map((id) => [id, logos[id]])) };
+}
+
+function _copiarJuego(juego, logosActuales) {
+  const grupos = new Map();
+  const logos = {};
+  const nuevosIds = new Map(Object.entries(juego.logos).map(([id, src]) => {
+    const nuevo = Object.keys(logosActuales).find((clave) => logosActuales[clave] === src) || uid();
+    logos[nuevo] = src;
+    return [id, nuevo];
+  }));
+  const botones = JSON.parse(JSON.stringify(juego.botones));
+  botones.forEach((b) => {
+    b.id = uid();
+    if (b.grupoId) {
+      if (!grupos.has(b.grupoId)) grupos.set(b.grupoId, uid());
+      b.grupoId = grupos.get(b.grupoId);
+    }
+    [b.contenido, ...(b.contenido.bloques || [])].forEach((c) => {
+      if (nuevosIds.has(c.logoId)) c.logoId = nuevosIds.get(c.logoId);
+    });
+  });
+  return { botones, logos };
+}
+
+function _enlazarBibliotecaJuegos() {
+  const juegos = () => S.config.juegos ?? (S.config.juegos = []);
+  const dialogo = document.getElementById("biblioteca-juegos");
+  const selector = document.getElementById("juego-guardado");
+  const crear = document.getElementById("juego-crear");
+  const eliminar = document.getElementById("juego-eliminar");
+  const pintar = () => {
+    selector.innerHTML = juegos().map((j) => `<option value="${esc(j.id)}">${esc(j.nombre)} · ${j.botones.length} botones</option>`).join("");
+    crear.disabled = eliminar.disabled = !juegos().length;
+  };
+  document.getElementById("btn-guardar-juego").onclick = () => {
+    const hoja = _hojaActual();
+    if (!hoja.botones.length) return toast("Agrega botones antes de guardar el juego.");
+    const nombre = prompt("Nombre del juego", hoja.nombre)?.trim();
+    if (!nombre) return;
+    const anterior = juegos().findIndex((j) => j.nombre.toLowerCase() === nombre.toLowerCase());
+    if (anterior >= 0 && !confirm(`¿Actualizar el juego guardado «${nombre}»?`)) return;
+    const juego = _capturarJuego(hoja, S.logos, nombre);
+    if (anterior < 0) juegos().push(juego);
+    else juegos()[anterior] = juego;
+    Store.guardar();
+    toast("Juego guardado.");
+  };
+  document.getElementById("btn-cargar-juego").onclick = () => { pintar(); dialogo.showModal(); };
+  crear.onclick = () => {
+    const juego = juegos().find((j) => j.id === selector.value);
+    if (!juego) return;
+    const copia = _copiarJuego(juego, S.logos);
+    S = Store.crearHoja(juego.nombre);
+    Object.assign(S.logos, copia.logos);
+    _hojaActual().botones = copia.botones;
+    Store.guardar();
+    _seleccion = new Set();
+    dialogo.close();
+    _renderSelectorHojas();
+    _renderHoja();
+    _renderPanel();
+  };
+  eliminar.onclick = () => {
+    const indice = juegos().findIndex((j) => j.id === selector.value);
+    if (indice < 0 || !confirm(`¿Eliminar el juego guardado «${juegos()[indice].nombre}»?`)) return;
+    juegos().splice(indice, 1);
+    Store.guardar();
+    pintar();
+  };
+}
+
 function _enlazarToolbar() {
+  _enlazarBibliotecaJuegos();
   document.getElementById("sel-hoja").onchange = (e) => {
     S = Store.setHojaActual(e.target.value);
     _seleccion = new Set();
@@ -116,6 +225,16 @@ function _enlazarToolbar() {
     _renderHoja();
     _renderPanel();
   };
+  document.getElementById("btn-duplicar-seleccion").onclick = _duplicarSeleccion;
+  document.querySelectorAll(".menu-editor").forEach((menu) => {
+    menu.addEventListener("click", (e) => { if (e.target.closest("button")) menu.open = false; });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && menu.open) {
+        menu.open = false;
+        menu.querySelector("summary").focus();
+      }
+    });
+  });
   document.getElementById("btn-reorganizar").onclick = () => {
     const hoja = _hojaActual();
     if (!hoja.botones.length) return toast("Agrega botones a la hoja para reorganizarlos.");
@@ -188,6 +307,19 @@ function _marcasHtml(botones) {
   return deCorte.join("") + deBorde.join("");
 }
 
+function _bloqueFueraDelBoton(bloque, boton) {
+  const a = bloque.getBoundingClientRect();
+  const b = boton.getBoundingClientRect();
+  if (a.left < b.left - 1 || a.right > b.right + 1 || a.top < b.top - 1 || a.bottom > b.bottom + 1) return true;
+  const path = boton.querySelector(".contorno-boton path");
+  if (!path || typeof path.isPointInFill !== "function") return false;
+  const matriz = path.getScreenCTM();
+  if (!matriz) return false;
+  const inversa = matriz.inverse();
+  return [[a.left,a.top],[a.right,a.top],[a.left,a.bottom],[a.right,a.bottom]]
+    .some(([x,y]) => !path.isPointInFill(new DOMPoint(x,y).matrixTransform(inversa)));
+}
+
 function _revisarImpresion() {
   const botones = _hojaActual().botones;
   const tolerancia = 0.01;
@@ -197,8 +329,9 @@ function _revisarImpresion() {
     Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > tolerancia &&
     Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > tolerancia)).length;
   const recortados = [...document.querySelectorAll("#hoja .boton-print")].filter((el) =>
-    [...el.querySelectorAll(".boton-linea, .boton-numero")].some((linea) =>
-      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1)
+    [...el.querySelectorAll(".boton-linea, .boton-numero, .bloque-texto")].some((linea) =>
+      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1 ||
+      (linea.classList.contains("bloque-texto") && _bloqueFueraDelBoton(linea, el)))
   ).length;
   return [
     fuera && `${fuera} con desborde de la hoja`,
@@ -257,11 +390,27 @@ function _escalaTexto(valor) {
   return Math.max(50, Math.min(150, Number(valor) || 100));
 }
 
+const ORIENTACIONES_TEXTO = [
+  ["horizontal", "Horizontal"],
+  ["vertical", "Girado 90° hacia abajo"],
+  ["vertical-inverso", "Girado 90° hacia arriba"],
+  ["apilado", "Letras una debajo de otra"],
+];
+
+function _orientacionTexto(valor) {
+  return ORIENTACIONES_TEXTO.some(([id]) => id === valor) ? valor : "horizontal";
+}
+
 function _controlesTexto(prefijo, contenido, literalPorDefecto = false) {
   const literal = contenido.textoLiteral ?? literalPorDefecto;
   return `
+    <label class="campo">Orientación del texto
+      <select id="${prefijo}-orientacion">${ORIENTACIONES_TEXTO.map(([id, nombre]) =>
+        `<option value="${id}" ${_orientacionTexto(contenido.orientacionTexto) === id ? "selected" : ""}>${nombre}</option>`
+      ).join("")}</select>
+    </label>
     <details class="opciones-texto">
-      <summary>Tipografía y texto literal</summary>
+      <summary>Tamaño de las letras y plural</summary>
       <label class="campo"><span><input id="${prefijo}-literal" type="checkbox" ${literal ? "checked" : ""}> Mantener el texto inferior tal como se escribe</span></label>
       ${[["arriba", "Superior"], ["centro", "Central"], ["abajo", "Inferior"]].map(([rol, etiqueta]) => `
         <label class="campo">${etiqueta} (%)<input id="${prefijo}-escala-${rol}" type="number" min="50" max="150" step="1" value="${_escalaTexto(contenido.escalasTexto?.[rol])}"></label>
@@ -271,6 +420,7 @@ function _controlesTexto(prefijo, contenido, literalPorDefecto = false) {
 
 function _leerControlesTexto(prefijo) {
   return {
+    orientacionTexto: _orientacionTexto(document.getElementById(`${prefijo}-orientacion`).value),
     textoLiteral: document.getElementById(`${prefijo}-literal`).checked,
     escalasTexto: Object.fromEntries(["arriba", "centro", "abajo"].map((rol) => [
       rol, _escalaTexto(document.getElementById(`${prefijo}-escala-${rol}`).value),
@@ -279,12 +429,145 @@ function _leerControlesTexto(prefijo) {
 }
 
 function _enlazarControlesTexto(prefijo, botones, refrescar, persistir) {
-  document.getElementById(`${prefijo}-literal`).closest("details").onchange = () => {
+  const aplicar = () => {
     const opciones = _leerControlesTexto(prefijo);
     botones().forEach((b) => Object.assign(b.contenido, opciones));
     refrescar();
     persistir();
   };
+  document.getElementById(`${prefijo}-literal`).closest("details").onchange = aplicar;
+  document.getElementById(`${prefijo}-orientacion`).onchange = aplicar;
+}
+
+function _numeroAcotado(valor, defecto, min, max) {
+  const n = valor === "" || valor == null ? NaN : Number(valor);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : defecto;
+}
+
+function _puntosContorno(texto) {
+  const filas = String(texto ?? "").trim().split(/[\r\n;]+/);
+  if (filas.length < 3 || filas.length > 64) return null;
+  const puntos = filas.map((fila) => fila.trim().split(/\s*,\s*/).map((valor) => valor ? Number(valor) : NaN));
+  if (!puntos.every((p) => p.length === 2 && p.every((v) => Number.isFinite(v) && v >= 0 && v <= 100))) return null;
+  const area = puntos.reduce((total, [x,y], i) => {
+    const [sigX,sigY] = puntos[(i + 1) % puntos.length];
+    return total + x * sigY - sigX * y;
+  }, 0);
+  return Math.abs(area) > 0.01 ? puntos : null;
+}
+
+const PUNTOS_INICIALES = "50,0\n100,50\n50,100\n0,50";
+
+function _contornoEspecial(b) {
+  if (b.forma === "triangulo") return "M44 7 Q50 -2 56 7 L96 80 Q105 98 87 98 H13 Q-5 98 4 80 Z";
+  if (b.forma !== "personalizado") return "";
+  const puntos = _puntosContorno(b.puntosContorno ?? PUNTOS_INICIALES);
+  return puntos ? `M${puntos.map((p) => p.join(" ")).join(" L")} Z` : "";
+}
+
+function _resolverBloque(texto, c) {
+  const inferior = c.textoLiteral || !Number.isFinite(Number(c.numero))
+    ? c.abajo || "" : pluralizar(c.numero, c.abajo);
+  const valores = { "código": c.numero, prefijo: c.numeroPrefijo, superior: c.arriba, inferior };
+  return String(texto ?? "").replace(/\{(código|prefijo|superior|inferior)\}/g, (_, clave) => String(valores[clave] ?? ""));
+}
+
+function _bloquesLibresHTML(c) {
+  return c.bloques.map((b) => {
+    const x = _numeroAcotado(b.x, 50, 0, 100);
+    const y = _numeroAcotado(b.y, 50, 0, 100);
+    const ancho = _numeroAcotado(b.ancho, 90, 1, 100);
+    const tam = _numeroAcotado(b.tam, 4, 0.5, 50);
+    const giro = _numeroAcotado(b.giro, 0, -180, 180);
+    const pos = `left:${x}%;top:${y}%;width:${ancho}%;transform:translate(-50%,-50%) rotate(${giro}deg)`;
+    if (b.tipo === "linea") return `<span class="bloque-libre bloque-separador" style="${pos};height:${tam}mm"></span>`;
+    if (b.tipo === "logo") {
+      const src = S.logos[b.logoId];
+      return src ? `<span class="bloque-libre" style="${pos};height:${tam}mm"><img alt="" src="${esc(src)}"></span>` : "";
+    }
+    const alineacion = ["left", "center", "right"].includes(b.alineacion) ? b.alineacion : "center";
+    return `<span class="bloque-libre bloque-texto" style="${pos};font-size:${tam}mm;font-weight:${b.negrita === false ? 400 : 700};text-align:${alineacion}">${esc(_resolverBloque(b.texto, c))}</span>`;
+  }).join("");
+}
+
+function _bloquesIniciales(contenido) {
+  const lineas = [
+    [contenido.arriba, "{superior}"],
+    [contenido.numero != null && contenido.numero !== "", "{prefijo}{código}"],
+    [contenido.abajo, "{inferior}"],
+  ].filter(([visible]) => visible);
+  return lineas.map(([, texto], i) => ({ tipo:"texto", texto, x:50, y:100 * (i + 1) / (lineas.length + 1), ancho:90, tam:4, giro:0, negrita:true }));
+}
+
+function _editorComposicion(prefijo, c) {
+  return `<details class="opciones-texto">
+    <summary>Composición libre</summary>
+    <label class="campo"><span><input type="checkbox" id="${prefijo}-libre" ${c.composicionLibre ? "checked" : ""}> Usar bloques posicionables</span></label>
+    <div id="${prefijo}-bloques"></div>
+  </details>`;
+}
+
+function _enlazarComposicion(prefijo, botones, refrescar, persistir) {
+  const toggle = document.getElementById(`${prefijo}-libre`);
+  const panel = document.getElementById(`${prefijo}-bloques`);
+  const leer = () => botones()[0].contenido;
+  const aplicar = (cambio) => {
+    botones().forEach((b) => Object.assign(b.contenido, cambio));
+    refrescar();
+    persistir();
+  };
+  const campo = (b, nombre, etiqueta, defecto, min, max, paso) =>
+    `<label class="campo">${etiqueta}<input data-campo="${nombre}" type="number" min="${min}" max="${max}" step="${paso}" value="${_numeroAcotado(b[nombre], defecto, min, max)}"></label>`;
+  const pintar = () => {
+    const c = leer();
+    panel.hidden = !c.composicionLibre;
+    if (panel.hidden) return;
+    panel.innerHTML = `
+      <p class="muted">Posición X/Y en porcentaje desde la esquina superior izquierda hasta el centro del bloque. Para series usa {código} o {prefijo}.</p>
+      ${c.bloques.map((b, i) => `<fieldset class="bloque-campos" data-indice="${i}">
+        <legend>${b.tipo === "linea" ? "Separador" : b.tipo === "logo" ? "Imagen" : "Texto"} ${i + 1}</legend>
+        ${b.tipo === "texto" ? `<label class="campo">Texto<textarea rows="2" data-campo="texto">${esc(b.texto || "")}</textarea></label>
+        <label class="campo">Alineación<select data-campo="alineacion">${[["left","Izquierda"],["center","Centro"],["right","Derecha"]].map(([id,label]) => `<option value="${id}" ${(b.alineacion || "center") === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <label class="campo"><span><input type="checkbox" data-campo="negrita" ${b.negrita === false ? "" : "checked"}> Negrita</span></label>` : ""}
+        ${b.tipo === "logo" ? `<label class="campo">Imagen guardada<select data-campo="logoId"><option value="">Elegir imagen</option>${Object.keys(S.logos).map((id, n) => `<option value="${esc(id)}" ${b.logoId === id ? "selected" : ""}>Imagen ${n + 1}</option>`).join("")}</select></label>` : ""}
+        <div class="fila-2">${campo(b,"x","X (%)",50,0,100,0.5)}${campo(b,"y","Y (%)",50,0,100,0.5)}
+        ${campo(b,"ancho","Ancho (%)",90,1,100,0.5)}${campo(b,"tam",b.tipo === "linea" ? "Grosor (mm)" : b.tipo === "logo" ? "Alto (mm)" : "Tamaño (mm)",4,0.5,50,0.1)}
+        ${campo(b,"giro","Giro (°)",0,-180,180,1)}</div>
+        <button type="button" data-quitar="${i}" class="btn sm sec">Quitar bloque</button>
+      </fieldset>`).join("")}
+      <div class="barra-hoja">
+        <button type="button" data-agregar="texto" class="btn sm">+ Texto</button>
+        <button type="button" data-agregar="linea" class="btn sm">+ Separador</button>
+        <button type="button" data-agregar="logo" class="btn sm">+ Imagen</button>
+      </div>`;
+  };
+  toggle.onchange = () => {
+    aplicar({ composicionLibre: toggle.checked, bloques: leer().bloques ?? _bloquesIniciales(leer()) });
+    pintar();
+  };
+  panel.onchange = (e) => {
+    const input = e.target;
+    const nombre = input.dataset.campo;
+    if (!nombre) return;
+    const indice = Number(input.closest("fieldset").dataset.indice);
+    const bloques = leer().bloques.map((b, i) => i === indice ? { ...b, [nombre]: input.type === "checkbox"
+      ? input.checked : input.type === "number" ? _numeroAcotado(input.value, b[nombre], Number(input.min), Number(input.max)) : input.value } : b);
+    aplicar({ bloques });
+  };
+  panel.onclick = (e) => {
+    const boton = e.target.closest("button");
+    if (!boton) return;
+    const bloques = [...leer().bloques];
+    if (boton.dataset.agregar) {
+      const tipo = boton.dataset.agregar;
+      bloques.push({ tipo, texto:"", x:50, y:50, ancho:90, tam:tipo === "linea" ? 0.5 : tipo === "logo" ? 10 : 4, giro:0, negrita:true });
+    } else if (boton.dataset.quitar != null) {
+      bloques.splice(Number(boton.dataset.quitar), 1);
+    } else return;
+    aplicar({ bloques });
+    pintar();
+  };
+  pintar();
 }
 
 function _contenidoHTML(b) {
@@ -295,6 +578,7 @@ function _contenidoHTML(b) {
       <img src="${src}" style="transform: translate(${c.offsetX || 0}%, ${c.offsetY || 0}%) scale(${c.zoom || 1})">
     </div>`;
   }
+  if (c.composicionLibre && Array.isArray(c.bloques)) return _bloquesLibresHTML(c);
   // El plural automático es opcional y solo se aplica a códigos numéricos.
   const arriba = c.arriba || "";
   const abajo = c.textoLiteral || !Number.isFinite(Number(c.numero)) ? (c.abajo || "") : pluralizar(c.numero, c.abajo);
@@ -302,7 +586,8 @@ function _contenidoHTML(b) {
   // El tamaño de letra se calcula sobre el alto ÚTIL (descontando el padding
   // vertical), no el alto total del botón: así "separación arriba/abajo" se
   // nota siempre, aunque el texto sea corto y nunca llegara a desbordar.
-  const altoUtil = Math.max(4, b.h - 2 * (b.paddingVMm ?? 3));
+  const vertical = _orientacionTexto(c.orientacionTexto) !== "horizontal";
+  const altoUtil = Math.max(4, vertical ? b.w - 2 * (b.paddingHMm ?? 3) : b.h - 2 * (b.paddingVMm ?? 3));
   // Cuantas menos líneas tenga el botón, más grande puede ir cada una: un
   // botón de una sola línea ("SERVICIO") no debe verse chico como si fuera
   // la etiqueta superior de un diseño de 3 líneas.
@@ -341,10 +626,15 @@ function _pintarBoton(el, b) {
   el.style.height = `${b.h}mm`;
   el.style.background = b.fondo;
   el.style.color = b.color;
-  el.style.borderRadius = formaRadioCss(b);
+  el.style.borderRadius = b.forma === "capsula" ? "999mm" : formaRadioCss(b);
+  el.dataset.orientacion = b.contenido.tipo === "texto" ? _orientacionTexto(b.contenido.orientacionTexto) : "horizontal";
   el.style.padding = `${b.paddingVMm ?? 3}mm ${b.paddingHMm ?? 3}mm`;
   el.classList.toggle("seleccionado", _estaResaltado(b));
-  el.innerHTML = _contenidoHTML(b);
+  const contorno = _contornoEspecial(b);
+  el.dataset.contorno = contorno ? "especial" : "";
+  const guia = contorno ? `<svg class="contorno-boton" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="${contorno}" vector-effect="non-scaling-stroke"></path></svg>` : "";
+  if (contorno) el.style.setProperty("--fondo-contorno", b.fondo);
+  el.innerHTML = guia + _contenidoHTML(b);
   _ajustarTextoAncho(el);
 }
 
@@ -353,7 +643,10 @@ function _pintarBoton(el, b) {
 function _ajustarTextoAncho(el) {
   el.querySelectorAll(".boton-linea, .boton-numero").forEach((linea) => {
     let intentos = 0;
-    while (linea.scrollWidth > linea.clientWidth + 0.5 && intentos < 40) {
+    const desborda = () => el.dataset.orientacion === "horizontal"
+      ? linea.scrollWidth > linea.clientWidth + 0.5
+      : linea.scrollHeight > linea.clientHeight + 0.5;
+    while (desborda() && intentos < 40) {
       const actual = parseFloat(linea.style.fontSize) || 3;
       const nuevo = actual * 0.92;
       if (nuevo < 1.5) break; // no bajar de ~1.5mm, quedaría ilegible
@@ -473,14 +766,25 @@ function _manejarBorradoTeclado() {
 
 // ---------- Panel lateral (agregar / editar botón / editar grupo) ----------
 
+function _duplicarSeleccion() {
+  const boton = _botonSeleccionado();
+  if (boton?.grupoId) return _duplicarGrupo(boton.grupoId);
+  const botones = _hojaActual().botones.filter((b) => _seleccion.has(b.id));
+  _duplicarBloque(botones, boton ? "Botón duplicado" : "Selección duplicada", false);
+}
+
 function _renderPanel() {
+  const seleccionado = _botonSeleccionado();
+  const duplicar = document.getElementById("btn-duplicar-seleccion");
+  duplicar.disabled = !_seleccion.size;
+  duplicar.textContent = seleccionado ? (seleccionado.grupoId ? "Duplicar grupo" : "Duplicar botón") : "Duplicar selección";
   const panel = document.getElementById("panel");
   if (_seleccion.size > 1) {
     panel.innerHTML = _formSeleccionMultiple();
     _enlazarFormSeleccionMultiple();
     return;
   }
-  const b = _botonSeleccionado();
+  const b = seleccionado;
   if (b && b.grupoId) {
     panel.innerHTML = _formEditarGrupo(b.grupoId);
     _enlazarFormEditarGrupo(b.grupoId);
@@ -554,6 +858,7 @@ function _enlazarFormSeleccionMultiple() {
   document.getElementById("ms-color").onchange = persistir;
 
   _enlazarPlantillas("ms");
+  _enlazarContorno("ms", (puntos) => { seleccionados().forEach((b) => { b.puntosContorno = puntos; }); refrescarTodos(); persistir(); });
 
   document.getElementById("ms-eliminar").onclick = () => {
     if (!confirm(`¿Eliminar los ${seleccionados().length} botones seleccionados?`)) return;
@@ -571,10 +876,13 @@ function _miembrosGrupo(grupoId) {
 }
 
 const FORMAS = [
-  ["cuadrado", "Cuadrado"],
+  ["cuadrado", "Rectángulo o cuadrado"],
   ["redondeado", "Bordes redondeados"],
   ["circulo", "Círculo"],
   ["ovalo", "Óvalo"],
+  ["capsula", "Cápsula (extremos semicirculares)"],
+  ["triangulo", "Triángulo redondeado"],
+  ["personalizado", "Contorno por puntos"],
 ];
 
 function _selectForma(id, valor) {
@@ -587,6 +895,37 @@ function _campoRadio(valor) {
 }
 
 // d = valores por defecto a precargar: { w, h, forma, radioMm }
+function _enlazarContorno(prefijo, aplicar) {
+  const forma = document.getElementById(`${prefijo}-forma`);
+  const contorno = document.getElementById(`${prefijo}-contorno`);
+  const wrap = document.getElementById(`${prefijo}-contorno-wrap`);
+  const ancho = document.getElementById(`${prefijo}-w`);
+  const alto = document.getElementById(`${prefijo}-h`);
+  const validar = () => {
+    wrap.hidden = forma.value !== "personalizado";
+    contorno.setCustomValidity(!wrap.hidden && !_puntosContorno(contorno.value) ? "Ingresa al menos tres puntos válidos que formen un área." : "");
+  };
+  const actualizarDiametro = (sincronizar) => {
+    const circulo = forma.value === "circulo";
+    ancho.labels[0].firstChild.textContent = circulo ? "Diámetro (mm)" : "Ancho (mm)";
+    alto.labels[0].hidden = circulo;
+    if (sincronizar && circulo && Number(ancho.value) >= 5 && alto.value !== ancho.value) {
+      alto.value = ancho.value;
+      alto.dispatchEvent(new Event("input"));
+      alto.dispatchEvent(new Event("change"));
+    }
+  };
+  forma.addEventListener("change", () => { validar(); actualizarDiametro(true); });
+  ancho.addEventListener("change", () => actualizarDiametro(true));
+  actualizarDiametro(false);
+  contorno.oninput = validar;
+  contorno.onchange = () => {
+    if (!contorno.reportValidity()) return;
+    aplicar(contorno.value);
+  };
+  validar();
+}
+
 function _bloqueFormaTamano(pfx, d) {
   d = d || {};
   return `
@@ -595,9 +934,14 @@ function _bloqueFormaTamano(pfx, d) {
       <label class="campo">Alto (mm)<input id="${pfx}-h" type="number" min="5" step="0.5" value="${d.h ?? 40}"></label>
     </div>
     <label class="campo">Forma ${_selectForma(pfx + "-forma", d.forma ?? "cuadrado")}</label>
+    <label class="campo" id="${pfx}-contorno-wrap" ${d.forma === "personalizado" ? "" : "hidden"}>
+      Puntos del contorno (%)
+      <textarea id="${pfx}-contorno" rows="4" aria-describedby="${pfx}-contorno-ayuda">${esc(d.puntosContorno ?? PUNTOS_INICIALES)}</textarea>
+      <small id="${pfx}-contorno-ayuda">Un punto X,Y por línea, entre 0 y 100, en el orden del borde. El último punto se une al primero.</small>
+    </label>
     <div class="fila-2">
-      <label class="campo">Separación izq/der (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
-      <label class="campo">Separación arriba/abajo (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
+      <label class="campo">Margen interior lateral (mm)<input id="${pfx}-paddingh" type="number" min="0" step="0.5" value="${d.paddingHMm ?? 3}"></label>
+      <label class="campo">Margen interior vertical (mm)<input id="${pfx}-paddingv" type="number" min="0" step="0.5" value="${d.paddingVMm ?? 3}"></label>
     </div>
     <div id="${pfx}-radio-wrap" style="display:${(d.forma ?? "cuadrado") === "redondeado" ? "" : "none"}">${_campoRadio(d.radioMm)}</div>
     <div class="fila-plantilla">
@@ -651,12 +995,15 @@ function _enlazarPlantillas(pfx) {
     campoW.value = p.w;
     campoH.value = p.h;
     campoForma.value = p.forma;
+    const campoContorno = document.getElementById(`${pfx}-contorno`);
+    campoContorno.value = p.puntosContorno ?? PUNTOS_INICIALES;
     if (campoRadio) campoRadio.value = p.radioMm || 0;
     if (campoPaddingH) campoPaddingH.value = p.paddingHMm ?? 3;
     if (campoPaddingV) campoPaddingV.value = p.paddingVMm ?? 3;
     // Dispara los eventos para que los listeners ya enganchados (vivos o no) reaccionen.
     [campoW, campoH].forEach((c) => { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); });
     campoForma.dispatchEvent(new Event("change"));
+    if (p.forma === "personalizado") campoContorno.dispatchEvent(new Event("change"));
     if (campoRadio) { campoRadio.dispatchEvent(new Event("input")); campoRadio.dispatchEvent(new Event("change")); }
     [campoPaddingH, campoPaddingV].forEach((c) => { if (c) { c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); } });
     sel.value = "";
@@ -670,6 +1017,7 @@ function _enlazarPlantillas(pfx) {
         w: Number(document.getElementById(`${pfx}-w`).value),
         h: Number(document.getElementById(`${pfx}-h`).value),
         forma: document.getElementById(`${pfx}-forma`).value,
+        puntosContorno: document.getElementById(`${pfx}-contorno`).value,
         radioMm: Number(document.getElementById("c-radio")?.value) || 0,
         paddingHMm: Number(document.getElementById(`${pfx}-paddingh`)?.value) || 0,
         paddingVMm: Number(document.getElementById(`${pfx}-paddingv`)?.value) || 0,
@@ -682,6 +1030,7 @@ function _enlazarPlantillas(pfx) {
 }
 
 function _crearYSeleccionar(boton) {
+  if (boton.forma === "circulo") boton.h = boton.w;
   const pos = empacarPosicion(_hojaActual().botones, boton.w, boton.h);
   boton.x = pos.x;
   boton.y = pos.y;
@@ -726,8 +1075,8 @@ function _enlazarFormAgregar() {
 
   document.getElementById("btn-nuevo-texto").onclick = () => {
     _crearYSeleccionar({
-      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color,
-      contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo, textoLiteral: u.textoLiteral ?? true, escalasTexto: u.escalasTexto },
+      id: uid(), forma: u.forma, radioMm: u.radioMm, paddingHMm: u.paddingHMm, paddingVMm: u.paddingVMm, w: u.w, h: u.h, fondo: u.fondo, color: u.color, puntosContorno: u.puntosContorno,
+      contenido: { tipo: "texto", arriba: u.arriba, numero: null, numeroPrefijo: u.numeroPrefijo, abajo: u.abajo, textoLiteral: u.textoLiteral ?? true, escalasTexto: u.escalasTexto, orientacionTexto: u.orientacionTexto },
     });
   };
 
@@ -749,6 +1098,7 @@ function _enlazarFormAgregar() {
 
   _renderLogosExistentesAgregar();
   _enlazarRadioToggle("l");
+  _enlazarContorno("l", () => {});
   _enlazarPlantillas("l");
 
   const listaInput = document.getElementById("l-lista");
@@ -766,8 +1116,9 @@ function _enlazarFormAgregar() {
     const numeros = leerCodigos();
     if (!numeros.length) return toast("Ingresa al menos un código o texto central.");
     const w = Number(document.getElementById("l-w").value);
-    const h = Number(document.getElementById("l-h").value);
     const forma = document.getElementById("l-forma").value;
+    const h = forma === "circulo" ? w : Number(document.getElementById("l-h").value);
+    const puntosContorno = document.getElementById("l-contorno").value;
     const radioMm = Number(document.getElementById("c-radio")?.value) || 3;
     const paddingHMm = Number(document.getElementById("l-paddingh")?.value) || 0;
     const paddingVMm = Number(document.getElementById("l-paddingv")?.value) || 0;
@@ -781,7 +1132,7 @@ function _enlazarFormAgregar() {
     let primero = null;
     numeros.forEach((n) => {
       const boton = {
-        id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId,
+        id: uid(), forma, radioMm, paddingHMm, paddingVMm, w, h, fondo, color, grupoId, puntosContorno,
         contenido: { tipo: "texto", arriba, numero: n, numeroPrefijo, abajo, ...opcionesTexto },
       };
       const pos = empacarPosicion(_hojaActual().botones, w, h);
@@ -790,7 +1141,7 @@ function _enlazarFormAgregar() {
       S = Store.agregarBoton(_hojaActual().id, boton);
       if (!primero) primero = boton.id;
     });
-    S = Store.actualizarUltimoUsado({ arriba, abajo, numeroPrefijo, ...opcionesTexto, forma, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
+    S = Store.actualizarUltimoUsado({ arriba, abajo, numeroPrefijo, ...opcionesTexto, forma, puntosContorno, w, h, radioMm, paddingHMm, paddingVMm, fondo, color });
     _seleccion = new Set([primero]);
     _renderHoja();
     _renderPanel();
@@ -826,12 +1177,12 @@ function _formEditar(b) {
       <button class="btn sm sec" id="e-cerrar">✕ Cerrar</button>
     </div>
     <div class="panel-form">
+      ${esLogo ? _bloqueEdicionLogo(c) : _bloqueEdicionTexto(c)}
       ${_bloqueFormaTamano("e", b)}
       ${_bloqueColores("e", b)}
-      ${esLogo ? _bloqueEdicionLogo(c) : _bloqueEdicionTexto(c)}
       <div class="fila-2">
-        <button class="btn" id="e-duplicar">Duplicar</button>
-        <button class="btn sec" id="e-eliminar">Eliminar</button>
+        <button class="btn" id="e-duplicar">Duplicar botón</button>
+        <button class="btn sec" id="e-eliminar">Eliminar botón</button>
       </div>
     </div>`;
 }
@@ -845,6 +1196,7 @@ function _bloqueEdicionTexto(c) {
     </div>
     <label class="campo">Texto abajo<input id="e-abajo" value="${esc(c.abajo || "")}"></label>
     ${_controlesTexto("e", c)}
+    ${_editorComposicion("e", c)}
   `;
 }
 
@@ -869,10 +1221,7 @@ function _enlazarFormEditar(b) {
     _renderPanel();
   };
 
-  document.getElementById("e-duplicar").onclick = () => {
-    S = Store.duplicarBoton(hojaId, b.id);
-    _renderHoja();
-  };
+  document.getElementById("e-duplicar").onclick = _duplicarSeleccion;
   document.getElementById("e-eliminar").onclick = () => {
     if (!confirm("¿Eliminar este botón?")) return;
     S = Store.eliminarBoton(hojaId, b.id);
@@ -890,6 +1239,7 @@ function _enlazarFormEditar(b) {
       arriba: b.contenido.tipo === "texto" ? b.contenido.arriba : undefined,
       abajo: b.contenido.tipo === "texto" ? b.contenido.abajo : undefined,
       numeroPrefijo: b.contenido.tipo === "texto" ? b.contenido.numeroPrefijo : undefined,
+      orientacionTexto: b.contenido.orientacionTexto,
       textoLiteral: b.contenido.textoLiteral,
       escalasTexto: b.contenido.escalasTexto,
     });
@@ -922,6 +1272,7 @@ function _enlazarFormEditar(b) {
   document.getElementById("e-color").onchange = persistir;
 
   _enlazarPlantillas("e");
+  _enlazarContorno("e", (puntos) => { b.puntosContorno = puntos; refrescar(); persistir(); });
 
   if (b.contenido.tipo === "logo") {
     document.getElementById("e-zoom").oninput = (e) => {
@@ -979,6 +1330,7 @@ function _enlazarFormEditar(b) {
     };
     document.getElementById("e-numero").onchange = persistir;
     _enlazarControlesTexto("e", () => [b], refrescar, persistir);
+    _enlazarComposicion("e", () => [b], refrescar, persistir);
   }
 }
 
@@ -1004,21 +1356,28 @@ function _posicionCopiaGrupo(botones, ancho, alto) {
 }
 
 function _duplicarGrupo(grupoId) {
-  const hoja = _hojaActual();
-  const originales = hoja.botones.filter((b) => b.grupoId === grupoId);
+  const originales = _hojaActual().botones.filter((b) => b.grupoId === grupoId);
+  _duplicarBloque(originales, "Grupo duplicado", true);
+}
+
+function _duplicarBloque(originales, mensaje, seleccionarGrupo) {
   if (!originales.length) return;
+  const hoja = _hojaActual();
   const x = Math.min(...originales.map((b) => b.x));
   const y = Math.min(...originales.map((b) => b.y));
   const ancho = Math.max(...originales.map((b) => b.x + b.w)) - x;
   const alto = Math.max(...originales.map((b) => b.y + b.h)) - y;
 
-  const nuevoGrupoId = uid();
+  const grupos = new Map();
   const copias = JSON.parse(JSON.stringify(originales));
   const posicion = _posicionCopiaGrupo(hoja.botones, ancho, alto);
   const destino = posicion || { x: MARGEN_HOJA_MM, y: MARGEN_HOJA_MM };
   copias.forEach((b) => {
     b.id = uid();
-    b.grupoId = nuevoGrupoId;
+    if (b.grupoId) {
+      if (!grupos.has(b.grupoId)) grupos.set(b.grupoId, uid());
+      b.grupoId = grupos.get(b.grupoId);
+    }
     b.x = destino.x + (b.x - x);
     b.y = destino.y + (b.y - y);
   });
@@ -1026,11 +1385,11 @@ function _duplicarGrupo(grupoId) {
   if (!posicion) S = Store.crearHoja();
   _hojaActual().botones.push(...copias);
   S = Store.guardar();
-  _seleccion = new Set([copias[0].id]);
+  _seleccion = new Set(seleccionarGrupo ? [copias[0].id] : copias.map((b) => b.id));
   _renderSelectorHojas();
   _renderHoja();
   _renderPanel();
-  toast(posicion ? "Grupo duplicado." : "Grupo duplicado en una hoja nueva.");
+  toast(posicion ? `${mensaje}.` : `${mensaje} en una hoja nueva.`);
 }
 
 function _formEditarGrupo(grupoId) {
@@ -1051,6 +1410,7 @@ function _formEditarGrupo(grupoId) {
       </div>
       <label class="campo">Texto abajo<input id="gr-abajo" value="${esc(base.contenido.abajo || "")}"></label>
       ${_controlesTexto("gr", base.contenido)}
+      ${_editorComposicion("gr", base.contenido)}
       ${_bloqueFormaTamano("gr", base)}
       ${_bloqueColores("gr", base)}
       <div class="chips">
@@ -1083,6 +1443,7 @@ function _enlazarFormEditarGrupo(grupoId) {
       Store.actualizarUltimoUsado({
         forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color,
         arriba: base.contenido.arriba, abajo: base.contenido.abajo, numeroPrefijo: base.contenido.numeroPrefijo,
+        orientacionTexto: base.contenido.orientacionTexto,
         textoLiteral: base.contenido.textoLiteral, escalasTexto: base.contenido.escalasTexto,
       });
     }
@@ -1095,6 +1456,7 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-numero-prefijo").oninput = (e) => { miembros().forEach((m) => (m.contenido.numeroPrefijo = e.target.value)); refrescarTodos(); };
   document.getElementById("gr-numero-prefijo").onchange = persistir;
   _enlazarControlesTexto("gr", miembros, refrescarTodos, persistir);
+  _enlazarComposicion("gr", miembros, refrescarTodos, persistir);
 
   document.getElementById("gr-w").oninput = (e) => { const v = Number(e.target.value); if (v) miembros().forEach((m) => (m.w = v)); refrescarTodos(); };
   document.getElementById("gr-w").onchange = persistir;
@@ -1123,6 +1485,7 @@ function _enlazarFormEditarGrupo(grupoId) {
   document.getElementById("gr-color").onchange = persistir;
 
   _enlazarPlantillas("gr");
+  _enlazarContorno("gr", (puntos) => { miembros().forEach((b) => { b.puntosContorno = puntos; }); refrescarTodos(); persistir(); });
 
   document.getElementById("gr-numeros").onchange = (e) => {
     const nuevos = _codigosBoton(e.target.value);
@@ -1134,7 +1497,7 @@ function _enlazarFormEditarGrupo(grupoId) {
     nuevos.forEach((n) => {
       if (actualesNums.includes(n)) return;
       const nuevoBoton = {
-        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId,
+        id: uid(), forma: base.forma, radioMm: base.radioMm, paddingHMm: base.paddingHMm, paddingVMm: base.paddingVMm, w: base.w, h: base.h, fondo: base.fondo, color: base.color, grupoId, puntosContorno: base.puntosContorno,
         contenido: { ...base.contenido, numero: n },
       };
       const pos = empacarPosicion(_hojaActual().botones, nuevoBoton.w, nuevoBoton.h);
@@ -1558,6 +1921,8 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
+
 
 
 

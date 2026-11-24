@@ -181,6 +181,9 @@ const Store = (function () {
     _estado.hojas.forEach((h) =>
       h.botones.forEach((b) => {
         if (b.contenido?.tipo === "logo" && b.contenido.logoId) usados.add(b.contenido.logoId);
+        (b.contenido?.bloques || []).forEach((bloque) => {
+          if (bloque.tipo === "logo" && bloque.logoId) usados.add(bloque.logoId);
+        });
       })
     );
     Object.keys(_estado.logos).forEach((id) => {
@@ -266,3 +269,4 @@ const Store = (function () {
     exportarJSON, importarJSON,
   };
 })();
+
