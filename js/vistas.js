@@ -42,11 +42,11 @@ function vistaInicio() {
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
-        <div class="aviso-impresion">Para imprimir, usa <b>márgenes: ninguno</b> y <b>escala: 100 %</b>. <span id="estado-impresion" role="status"></span></div>
         <div class="lienzo-toolbar card">
           <div class="barra-hoja">
             <label class="zoom-label" for="sel-hoja">Hoja</label>
             <select id="sel-hoja"></select>
+            <span class="zoom-label" id="total-botones"></span>
             <details class="menu-editor">
               <summary class="btn sm">Gestionar hojas</summary>
               <div class="menu-editor-opciones">
@@ -332,12 +332,7 @@ function _enlazarToolbar() {
     e.target.value = "";
   };
   document.getElementById("btn-calibrar").onclick = _imprimirPruebaEscala;
-  document.getElementById("btn-imprimir").onclick = () => {
-    if (!_hojaActual().botones.length) return toast("Esta hoja no tiene botones para imprimir.");
-    const problemas = _revisarImpresion();
-    if (problemas.length && !confirm(`Revisa antes de imprimir:\n${problemas.join("\n")}\n\n¿Imprimir de todos modos?`)) return;
-    window.print();
-  };
+  document.getElementById("btn-imprimir").onclick = () => window.print();
 }
 
 function _imprimirPruebaEscala() {
@@ -367,49 +362,6 @@ function _marcasHtml(botones) {
   return deCorte.join("") + deBorde.join("");
 }
 
-function _bloqueFueraDelBoton(bloque, boton) {
-  const bordes = boton.getBoundingClientRect();
-  const rango = document.createRange();
-  rango.selectNodeContents(bloque);
-  const lineas = [...rango.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
-  const path = boton.querySelector(".contorno-boton path");
-  const inversa = typeof path?.isPointInFill === "function" ? path.getScreenCTM()?.inverse() : null;
-  return lineas.some((rect) => {
-    if (rect.left < bordes.left - 1 || rect.right > bordes.right + 1 ||
-        rect.top < bordes.top - 1 || rect.bottom > bordes.bottom + 1) return true;
-    return inversa && [[rect.left,rect.top],[rect.right,rect.top],[rect.left,rect.bottom],[rect.right,rect.bottom]]
-      .some(([x,y]) => !path.isPointInFill(new DOMPoint(x,y).matrixTransform(inversa)));
-  });
-}
-
-function _revisarImpresion() {
-  const botones = _hojaActual().botones;
-  const tolerancia = 0.01;
-  const fuera = botones.filter((b) => b.x < -tolerancia || b.y < -tolerancia ||
-    b.x + b.w > HOJA_ANCHO_MM + tolerancia || b.y + b.h > HOJA_ALTO_MM + tolerancia).length;
-  const solapados = botones.filter((a, i) => botones.some((b, j) => i !== j &&
-    Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > tolerancia &&
-    Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > tolerancia)).length;
-  const recortados = [...document.querySelectorAll("#hoja .boton-print")].filter((el) =>
-    [...el.querySelectorAll(".boton-linea, .boton-numero, .bloque-texto")].some((linea) =>
-      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1 ||
-      (linea.classList.contains("bloque-texto") && _bloqueFueraDelBoton(linea, el)))
-  ).length;
-  return [
-    fuera && `${fuera} con desborde de la hoja`,
-    solapados && `${solapados} con solapamiento`,
-    recortados && `${recortados} con texto recortado`,
-  ].filter(Boolean);
-}
-
-function _actualizarEstadoImpresion() {
-  const cantidad = _hojaActual().botones.length;
-  const problemas = _revisarImpresion();
-  document.getElementById("estado-impresion").textContent = problemas.length
-    ? ` · ${cantidad} en la hoja. Revisar: ${problemas.join(", ")}.`
-    : ` · ${cantidad} ${cantidad === 1 ? "botón" : "botones"} en la hoja.`;
-}
-
 function _renderHoja() {
   const hojaEl = document.getElementById("hoja");
   const h = _hojaActual();
@@ -417,7 +369,8 @@ function _renderHoja() {
   h.botones.forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
   _sincronizarTextoGrupos(h);
   _enlazarBotones();
-  _actualizarEstadoImpresion();
+  const cantidad = h.botones.length;
+  document.getElementById("total-botones").textContent = `${cantidad} ${cantidad === 1 ? "botón" : "botones"}`;
 }
 
 // Dentro de un mismo grupo (lista de números), cada botón achica su letra
@@ -803,7 +756,6 @@ function _renderMarcasCorte() {
   const h = _hojaActual();
   hojaEl.querySelectorAll(".marca-corte, .marca-borde").forEach((m) => m.remove());
   hojaEl.insertAdjacentHTML("afterbegin", _marcasHtml(h.botones));
-  _actualizarEstadoImpresion();
 }
 
 // Elimina botones sin pedir confirmación (para atajos como Supr) pero permite
@@ -1729,7 +1681,6 @@ function vistaPanel() {
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
-        <div class="aviso-impresion">⚠️ Al imprimir: <b>Orientación = Horizontal</b>, <b>Márgenes = Ninguno</b> y <b>Escala = 100% / Tamaño real</b> (no "Ajustar"). El navegador no deja preseleccionar esto desde la página, revísalo en el diálogo de impresión.</div>
         <div class="lienzo-toolbar card">
           <span class="muted">Textos, tamaños y posiciones editables; flechas del teclado para mover.</span>
           <span class="spacer"></span>
@@ -1912,7 +1863,7 @@ function _renderPanelLateral() {
       <label class="campo">Alto (mm)<input id="pn-alto" type="number" min="10" max="400" step="0.5"></label>
     </div>
     <label class="campo" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="pn-prop" style="width:auto"> Mantener proporción</label>
-    <div class="muted" style="font-size:12px" id="pn-aviso"></div>
+    <div class="muted" style="font-size:12px" id="pn-tamano-original"></div>
     <button class="btn sm sec" id="pn-reset">Tamaño original del panel</button>`;
 
   const c = _panelCelda(_panelSel);
@@ -1960,10 +1911,7 @@ function _renderPanelLateral() {
     if (document.activeElement !== inA) inA.value = _MM(e.aMm).replace(",", ".");
     if (document.activeElement !== inH) inH.value = _MM(e.hMm).replace(",", ".");
     inP.checked = cfg.proporcion;
-    const excede = e.aMm > HOJA_ALTO_MM - 12 || e.hMm > HOJA_ANCHO_MM - 7;
-    document.getElementById("pn-aviso").textContent = excede
-      ? `⚠️ Es más grande que una hoja carta horizontal (${_MM(HOJA_ALTO_MM)} × ${_MM(HOJA_ANCHO_MM)} mm): se cortará al imprimir.`
-      : `Original: ${_MM(PANEL_ANCHO_MM)} × ${_MM((PANEL_ANCHO_MM * PANEL_REF_H) / PANEL_REF_W)} mm.`;
+    document.getElementById("pn-tamano-original").textContent = `Original: ${_MM(PANEL_ANCHO_MM)} × ${_MM((PANEL_ANCHO_MM * PANEL_REF_H) / PANEL_REF_W)} mm.`;
   };
   const cambiarPanel = (campo) => {
     const cfg = Store.panelConfig(), e = panelEscala(cfg);
@@ -2098,6 +2046,7 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
 
 
 
