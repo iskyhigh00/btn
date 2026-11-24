@@ -78,6 +78,16 @@ function vistaInicio() {
           <input type="file" id="input-importar" accept="application/json" style="display:none">
           <button class="btn" id="btn-imprimir" title="Márgenes: Ninguno · Escala: 100% / Tamaño real">🖨️ Imprimir</button>
         </div>
+        <dialog id="guardar-juego">
+          <form class="panel-form">
+            <h3>Guardar hoja como juego</h3>
+            <label class="campo">Nombre del juego<input id="nombre-juego" maxlength="100" required></label>
+            <div class="barra-hoja">
+              <button class="btn" id="confirmar-juego" type="submit">Guardar juego</button>
+              <button class="btn sec" id="cancelar-juego" type="button">Cancelar</button>
+            </div>
+          </form>
+        </dialog>
         <dialog id="biblioteca-juegos">
           <form method="dialog" class="panel-form">
             <h3>Biblioteca de juegos</h3>
@@ -152,17 +162,32 @@ function _enlazarBibliotecaJuegos() {
     selector.innerHTML = juegos().map((j) => `<option value="${esc(j.id)}">${esc(j.nombre)} · ${j.botones.length} botones</option>`).join("");
     crear.disabled = eliminar.disabled = !juegos().length;
   };
+  const guardar = document.getElementById("guardar-juego");
+  const nombre = document.getElementById("nombre-juego");
+  const confirmar = document.getElementById("confirmar-juego");
+  const buscar = () => juegos().findIndex((j) => j.nombre.toLowerCase() === nombre.value.trim().toLowerCase());
+  nombre.oninput = () => {
+    nombre.setCustomValidity(nombre.value.trim() ? "" : "Escribe el nombre del juego.");
+    confirmar.textContent = buscar() < 0 ? "Guardar juego" : "Actualizar juego existente";
+  };
   document.getElementById("btn-guardar-juego").onclick = () => {
     const hoja = _hojaActual();
     if (!hoja.botones.length) return toast("Agrega botones antes de guardar el juego.");
-    const nombre = prompt("Nombre del juego", hoja.nombre)?.trim();
-    if (!nombre) return;
-    const anterior = juegos().findIndex((j) => j.nombre.toLowerCase() === nombre.toLowerCase());
-    if (anterior >= 0 && !confirm(`¿Actualizar el juego guardado «${nombre}»?`)) return;
-    const juego = _capturarJuego(hoja, S.logos, nombre);
+    nombre.value = hoja.nombre.slice(0, 100);
+    nombre.oninput();
+    guardar.showModal();
+    nombre.focus();
+    nombre.select();
+  };
+  document.getElementById("cancelar-juego").onclick = () => guardar.close();
+  guardar.querySelector("form").onsubmit = (evento) => {
+    evento.preventDefault();
+    const anterior = buscar();
+    const juego = _capturarJuego(_hojaActual(), S.logos, nombre.value.trim());
     if (anterior < 0) juegos().push(juego);
     else juegos()[anterior] = juego;
     Store.guardar();
+    guardar.close();
     toast("Juego guardado.");
   };
   document.getElementById("btn-cargar-juego").onclick = () => { pintar(); dialogo.showModal(); };
