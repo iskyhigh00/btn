@@ -41,19 +41,59 @@ const Store = (function () {
     }
   }
 
-  function _guardar(estado) {
+  const deshacerPila = [];
+  const rehacerPila = [];
+  const limiteHistorial = 15;
+  let _estado = null;
+  let guardado = "";
+  let anteriorPendiente = null;
+
+  function persistir(json) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(estado));
+      localStorage.setItem(KEY, json);
     } catch (e) {
-      toast("No se pudo guardar (¿localStorage lleno? probá borrar algún logo).");
+      toast("No se pudo guardar. Revisa el espacio disponible del navegador.");
     }
+  }
+
+  function cerrarCambio() {
+    if (anteriorPendiente === null) return;
+    if (anteriorPendiente !== guardado) {
+      deshacerPila.push(anteriorPendiente);
+      if (deshacerPila.length > limiteHistorial) deshacerPila.shift();
+      rehacerPila.length = 0;
+    }
+    anteriorPendiente = null;
+  }
+
+  function _guardar(estado, registrar = true) {
+    const json = JSON.stringify(estado);
+    if (json === guardado) return estado;
+    if (registrar && anteriorPendiente === null) {
+      anteriorPendiente = guardado;
+      queueMicrotask(cerrarCambio);
+    }
+    guardado = json;
+    persistir(json);
     return estado;
   }
 
-  let _estado = null;
+  function _recuperar(origen, destino) {
+    cerrarCambio();
+    if (!origen.length) return null;
+    const siguiente = origen.pop();
+    destino.push(guardado);
+    return _guardar(_estado = JSON.parse(siguiente), false);
+  }
+
+  function deshacer() { return _recuperar(deshacerPila, rehacerPila); }
+  function rehacer() { return _recuperar(rehacerPila, deshacerPila); }
 
   function init() {
     _estado = _leer();
+    guardado = JSON.stringify(_estado);
+    anteriorPendiente = null;
+    deshacerPila.length = rehacerPila.length = 0;
     return _estado;
   }
 
@@ -62,8 +102,9 @@ const Store = (function () {
   }
 
   function setHojaActual(id) {
+    cerrarCambio();
     _estado.hojaActualId = id;
-    return _guardar(_estado);
+    return _guardar(_estado, false);
   }
 
   function crearHoja(nombre) {
@@ -181,6 +222,9 @@ const Store = (function () {
     _estado.hojas.forEach((h) =>
       h.botones.forEach((b) => {
         if (b.contenido?.tipo === "logo" && b.contenido.logoId) usados.add(b.contenido.logoId);
+        (b.contenido?.bloques || []).forEach((bloque) => {
+          if (bloque.tipo === "logo" && bloque.logoId) usados.add(bloque.logoId);
+        });
       })
     );
     Object.keys(_estado.logos).forEach((id) => {
@@ -257,7 +301,7 @@ const Store = (function () {
   }
 
   return {
-    init, hojaActual, setHojaActual, guardar, actualizarUltimoUsado,
+    init, hojaActual, setHojaActual, guardar, actualizarUltimoUsado, deshacer, rehacer,
     crearHoja, renombrarHoja, eliminarHoja, duplicarHoja,
     agregarBoton, actualizarBoton, eliminarBoton, duplicarBoton,
     agregarLogo, eliminarLogosNoUsados,
@@ -266,3 +310,5 @@ const Store = (function () {
     exportarJSON, importarJSON,
   };
 })();
+
+
