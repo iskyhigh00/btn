@@ -42,7 +42,7 @@ function vistaInicio() {
     <div class="editor">
       <aside class="panel-lateral card" id="panel"></aside>
       <section class="lienzo-wrap">
-        <div class="aviso-impresion">Para imprimir, usa <b>márgenes: ninguno</b> y <b>escala: 100 %</b>.</div>
+        <div class="aviso-impresion">Para imprimir, usa <b>márgenes: ninguno</b> y <b>escala: 100 %</b>. <span id="estado-impresion" role="status"></span></div>
         <div class="lienzo-toolbar card">
           <select id="sel-hoja"></select>
           <button class="btn sm" id="btn-hoja-nueva">+ Hoja</button>
@@ -117,10 +117,28 @@ function _enlazarToolbar() {
     _renderPanel();
   };
   document.getElementById("btn-reorganizar").onclick = () => {
-    reorganizarBotones(_hojaActual().botones);
+    const hoja = _hojaActual();
+    if (!hoja.botones.length) return toast("Agrega botones a la hoja para reorganizarlos.");
+    const posiciones = new Map(hoja.botones.map((b) => [b.id, { x: b.x, y: b.y }]));
+    reorganizarBotones(hoja.botones);
+    const cambios = hoja.botones.filter((b) => {
+      const anterior = posiciones.get(b.id);
+      return b.x !== anterior.x || b.y !== anterior.y;
+    }).map((b) => ({ id: b.id, x: b.x, y: b.y }));
+    if (!cambios.length) return toast("La hoja ya está organizada.");
     Store.guardar();
     _renderHoja();
-    toast("Botones reorganizados en filas parejas para cortar con guillotina.");
+    toastAccion("Hoja reorganizada para corte.", "Deshacer", () => {
+      const actual = S.hojas.find((h) => h.id === hoja.id);
+      if (!actual) return;
+      const porId = new Map(actual.botones.map((b) => [b.id, b]));
+      cambios.forEach(({ id, x, y }) => {
+        const b = porId.get(id);
+        if (b && b.x === x && b.y === y) Object.assign(b, posiciones.get(id));
+      });
+      Store.guardar();
+      if (_hojaActual().id === actual.id) _renderHoja();
+    }, 12000);
   };
   document.getElementById("zoom").oninput = (e) => {
     _zoom = Number(e.target.value);
@@ -154,7 +172,12 @@ function _enlazarToolbar() {
     reader.readAsText(file);
     e.target.value = "";
   };
-  document.getElementById("btn-imprimir").onclick = () => window.print();
+  document.getElementById("btn-imprimir").onclick = () => {
+    if (!_hojaActual().botones.length) return toast("Esta hoja no tiene botones para imprimir.");
+    const problemas = _revisarImpresion();
+    if (problemas.length && !confirm(`Revisa antes de imprimir:\n${problemas.join("\n")}\n\n¿Imprimir de todos modos?`)) return;
+    window.print();
+  };
 }
 
 // ---------- Lienzo (hoja + botones + marcas de corte) ----------
@@ -165,6 +188,33 @@ function _marcasHtml(botones) {
   return deCorte.join("") + deBorde.join("");
 }
 
+function _revisarImpresion() {
+  const botones = _hojaActual().botones;
+  const tolerancia = 0.01;
+  const fuera = botones.filter((b) => b.x < -tolerancia || b.y < -tolerancia ||
+    b.x + b.w > HOJA_ANCHO_MM + tolerancia || b.y + b.h > HOJA_ALTO_MM + tolerancia).length;
+  const solapados = botones.filter((a, i) => botones.some((b, j) => i !== j &&
+    Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > tolerancia &&
+    Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > tolerancia)).length;
+  const recortados = [...document.querySelectorAll("#hoja .boton-print")].filter((el) =>
+    [...el.querySelectorAll(".boton-linea, .boton-numero")].some((linea) =>
+      linea.scrollWidth > linea.clientWidth + 1 || linea.scrollHeight > linea.clientHeight + 1)
+  ).length;
+  return [
+    fuera && `${fuera} con desborde de la hoja`,
+    solapados && `${solapados} con solapamiento`,
+    recortados && `${recortados} con texto recortado`,
+  ].filter(Boolean);
+}
+
+function _actualizarEstadoImpresion() {
+  const cantidad = _hojaActual().botones.length;
+  const problemas = _revisarImpresion();
+  document.getElementById("estado-impresion").textContent = problemas.length
+    ? ` · ${cantidad} en la hoja. Revisar: ${problemas.join(", ")}.`
+    : ` · ${cantidad} ${cantidad === 1 ? "botón" : "botones"} en la hoja.`;
+}
+
 function _renderHoja() {
   const hojaEl = document.getElementById("hoja");
   const h = _hojaActual();
@@ -172,6 +222,7 @@ function _renderHoja() {
   h.botones.forEach((b) => _pintarBoton(document.querySelector(`.boton-print[data-id="${b.id}"]`), b));
   _sincronizarTextoGrupos(h);
   _enlazarBotones();
+  _actualizarEstadoImpresion();
 }
 
 // Dentro de un mismo grupo (lista de números), cada botón achica su letra
@@ -344,7 +395,13 @@ function _iniciarDrag(e, el) {
   const b = h.botones.find((x) => x.id === id);
   if (!b) return;
   const startX = e.clientX, startY = e.clientY;
-  const startBX = b.x, startBY = b.y;
+  const moverGrupo = b.grupoId && !(e.ctrlKey || e.metaKey || e.shiftKey);
+  const miembros = (moverGrupo ? h.botones.filter((otro) => otro.grupoId === b.grupoId) : [b])
+    .map((boton) => ({ boton, x: boton.x, y: boton.y, nodo: document.querySelector(`.boton-print[data-id="${boton.id}"]`) }));
+  const izq = Math.min(...miembros.map((m) => m.x));
+  const arriba = Math.min(...miembros.map((m) => m.y));
+  const der = Math.max(...miembros.map((m) => m.x + m.boton.w));
+  const abajo = Math.max(...miembros.map((m) => m.y + m.boton.h));
   el.dataset.arrastrado = "0";
   el.setPointerCapture(e.pointerId);
   const factor = PX_POR_MM * _zoom;
@@ -352,19 +409,26 @@ function _iniciarDrag(e, el) {
     const dx = (ev.clientX - startX) / factor;
     const dy = (ev.clientY - startY) / factor;
     if (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3) el.dataset.arrastrado = "1";
-    b.x = clamp(startBX + dx, 0, Math.max(0, HOJA_ANCHO_MM - b.w));
-    b.y = clamp(startBY + dy, 0, Math.max(0, HOJA_ALTO_MM - b.h));
-    el.style.left = `${b.x}mm`;
-    el.style.top = `${b.y}mm`;
+    if (el.dataset.arrastrado !== "1") return;
+    const moverX = clamp(dx, Math.min(0, -izq), Math.max(0, HOJA_ANCHO_MM - der));
+    const moverY = clamp(dy, Math.min(0, -arriba), Math.max(0, HOJA_ALTO_MM - abajo));
+    miembros.forEach(({ boton, x, y, nodo }) => {
+      boton.x = x + moverX;
+      boton.y = y + moverY;
+      nodo.style.left = `${boton.x}mm`;
+      nodo.style.top = `${boton.y}mm`;
+    });
     _renderMarcasCorte();
   }
   function soltar() {
     el.removeEventListener("pointermove", mover);
     el.removeEventListener("pointerup", soltar);
+    el.removeEventListener("pointercancel", soltar);
     Store.guardar();
   }
   el.addEventListener("pointermove", mover);
   el.addEventListener("pointerup", soltar);
+  el.addEventListener("pointercancel", soltar);
 }
 
 function _renderMarcasCorte() {
@@ -372,6 +436,7 @@ function _renderMarcasCorte() {
   const h = _hojaActual();
   hojaEl.querySelectorAll(".marca-corte, .marca-borde").forEach((m) => m.remove());
   hojaEl.insertAdjacentHTML("afterbegin", _marcasHtml(h.botones));
+  _actualizarEstadoImpresion();
 }
 
 // Elimina botones sin pedir confirmación (para atajos como Supr) pero permite
@@ -1493,5 +1558,6 @@ function _panelFlechas(ev) {
   }
   _panelInfoMover(c);
 }
+
 
 
