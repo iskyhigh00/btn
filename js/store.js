@@ -51,8 +51,10 @@ const Store = (function () {
   function persistir(json) {
     try {
       localStorage.setItem(KEY, json);
+      return true;
     } catch (e) {
       toast("No se pudo guardar. Revisa el espacio disponible del navegador.");
+      return false;
     }
   }
 
@@ -66,15 +68,16 @@ const Store = (function () {
     anteriorPendiente = null;
   }
 
-  function _guardar(estado, registrar = true) {
+  function _guardar(estado, registrar = true, exigirPersistencia = false) {
     const json = JSON.stringify(estado);
     if (json === guardado) return estado;
+    if (exigirPersistencia && !persistir(json)) return null;
     if (registrar && anteriorPendiente === null) {
       anteriorPendiente = guardado;
       queueMicrotask(cerrarCambio);
     }
     guardado = json;
-    persistir(json);
+    if (!exigirPersistencia) persistir(json);
     return estado;
   }
 
@@ -466,7 +469,10 @@ const Store = (function () {
 
       const base = agregar ? _estado : nuevo;
       const config = { ...base.config, juegos };
-      return _guardar(_estado = { ...base, config, logos, hojas: [...hojas, ...nuevas], hojaActualId, plantillas });
+      const estado = { ...base, config, logos, hojas: [...hojas, ...nuevas], hojaActualId, plantillas };
+      const guardado = _guardar(estado, true, true);
+      if (guardado) _estado = guardado;
+      return guardado;
     } catch (e) {
       toast(e.message || "El archivo no tiene el formato esperado.");
       return null;

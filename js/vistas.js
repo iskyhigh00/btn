@@ -253,7 +253,7 @@ function _enlazarToolbar() {
       const estado = Store[accion]();
       if (!estado) return toast(`No hay cambios para ${accion}.`);
       S = estado;
-      _seleccion = new Set();
+      _seleccion = new Set(_hojaActual().botones.filter((b) => _seleccion.has(b.id)).map((b) => b.id));
       document.getElementById("toasts").replaceChildren();
       _renderSelectorHojas();
       _renderHoja();
@@ -1853,6 +1853,7 @@ function _formEditarGrupo(grupoId) {
         ${miembros.map((m) => `<span class="chip">${esc(m.contenido.numeroPrefijo || "")}${esc(m.contenido.numero)}<button type="button" class="chip-x" data-id="${m.id}" title="Quitar del grupo">✕</button></span>`).join("")}
       </div>
       <button class="btn" id="gr-duplicar" type="button">Duplicar grupo</button>
+      <button class="btn sec" id="gr-separar" type="button">Separar botón seleccionado</button>
       <button class="btn sec" id="gr-eliminar">Eliminar grupo completo</button>
     </div>`;
 }
@@ -1948,6 +1949,15 @@ function _enlazarFormEditarGrupo(grupoId) {
   };
 
   document.getElementById("gr-duplicar").onclick = () => _duplicarGrupo(grupoId);
+  document.getElementById("gr-separar").onclick = () => {
+    const boton = _botonSeleccionado();
+    if (boton?.grupoId !== grupoId) return;
+    delete boton.grupoId;
+    Store.guardar();
+    _renderHoja();
+    _renderPanel();
+    toast("Botón separado del grupo.");
+  };
 
   document.getElementById("gr-eliminar").onclick = () => {
     const cant = miembros().length;
