@@ -255,10 +255,10 @@ html{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exac
 @media screen {
   .campo[hidden] { display: none; }
   .bloque-campos { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; min-width: 0; display: grid; gap: 7px; }
-  #biblioteca-juegos { background: var(--card); color: var(--texto); border: 1px solid var(--line); border-radius: 14px; max-width: min(540px, calc(100vw - 24px)); }
-  #biblioteca-juegos::backdrop { background: #080b13b0; }
+  :is(#biblioteca-juegos, #guardar-juego) { background: var(--card); color: var(--texto); border: 1px solid var(--line); border-radius: 14px; max-width: min(540px, calc(100vw - 24px)); }
+  :is(#biblioteca-juegos, #guardar-juego)::backdrop { background: #080b13b0; }
 }
-@media print { #biblioteca-juegos { display: none !important; } }
+@media print { :is(#biblioteca-juegos, #guardar-juego) { display: none !important; } }
 
 
 @media screen {
