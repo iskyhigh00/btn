@@ -1,9 +1,12 @@
-const CACHE = "botonera-v0.14.0";
+importScripts("./version.js");
+
+const CACHE_PREFIX = `botonera:${self.registration.scope}:v`;
+const CACHE = `${CACHE_PREFIX}${APP_VERSION}`;
 const HTML = ["./", "./index.html"];
 const ASSETS = [
   "./css/styles.css",
   "./js/store.js", "./js/core.js", "./js/vistas.js", "./js/app.js",
-  "./manifest.json",
+  "./version.js", "./manifest.json",
   "./img/logo-icon.png",
   "./fonts/DejaVuSans-Bold.woff2",
 ];
@@ -16,14 +19,14 @@ self.addEventListener("install", (e) => {
   // espacios, opcional ausente) NO se cae toda la instalación del SW como
   // ocurriría con addAll (que es atómico) y nos quedaríamos sin offline.
   e.waitUntil(caches.open(CACHE).then((c) =>
-    Promise.allSettled([...HTML, ...ASSETS].map((a) => c.add(a)))
+    Promise.allSettled([...HTML, ...ASSETS].map((a) => c.add(new Request(a, { cache: "reload" }))))
   ));
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -31,7 +34,8 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
-  const isHTML = url.pathname === "/" || url.pathname.endsWith(".html");
+  if (!url.href.startsWith(self.registration.scope)) return;
+  const isHTML = e.request.mode === "navigate" || url.pathname.endsWith(".html");
 
   if (isHTML) {
     // HTML siempre desde la red, IGNORANDO la caché HTTP del navegador (no-store):
@@ -55,3 +59,4 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("message", (e) => {
   if (e.data === "skipWaiting") self.skipWaiting();
 });
+
