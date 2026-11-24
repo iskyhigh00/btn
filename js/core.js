@@ -185,7 +185,7 @@ function clamp(n, min, max) {
 function _agruparEnBloques(botones) {
   const porClave = new Map();
   botones.forEach((b) => {
-    const clave = b.grupoId || `${b.w}x${b.h}x${b.forma}`;
+    const clave = JSON.stringify([b.grupoId ?? null, b.w, b.h, b.grupoId ? null : b.forma]);
     if (!porClave.has(clave)) porClave.set(clave, []);
     porClave.get(clave).push(b);
   });
@@ -196,13 +196,13 @@ function _agruparEnBloques(botones) {
 // usa tantas columnas como entren en el ancho de la hoja (una sola fila si
 // caben todos) y recién pasa a más filas cuando no entran, para que un corte
 // recto separe a varios botones de una sola vez en vez de uno por uno.
-function _armarGrillaBloque(miembros, gap) {
+function _armarGrillaBloque(miembros, gap, maxCols = Infinity) {
   miembros.sort((a, b) => (a.contenido?.numero ?? 0) - (b.contenido?.numero ?? 0));
   const n = miembros.length;
   const w = miembros[0].w, h = miembros[0].h;
   const anchoDisponible = HOJA_ANCHO_MM - 2 * MARGEN_HOJA_MM;
   const colsQueEntran = Math.max(1, Math.floor((anchoDisponible + gap) / (w + gap)));
-  const cols = Math.min(n, colsQueEntran);
+  const cols = Math.min(n, colsQueEntran, maxCols);
   return {
     ancho: cols * w + (cols - 1) * gap,
     alto: Math.ceil(n / cols) * h + (Math.ceil(n / cols) - 1) * gap,
@@ -215,14 +215,63 @@ function _armarGrillaBloque(miembros, gap) {
   };
 }
 
-// Reacomoda todos los botones de una hoja agrupando los de igual tamaño en
-// grillas cuadradas y esas grillas en filas prolijas, para que se pueda
-// cortar con guillotina: cortes rectos que separan varios botones a la vez.
-// Muta boton.x/boton.y de cada botón recibido.
+// Busca la disposición más baja en la que cada medida tenga su propia franja.
+function _franjasPorMedida(grupos, gap) {
+  const anchoUtil = HOJA_ANCHO_MM - 2 * MARGEN_HOJA_MM;
+  const altoUtil = HOJA_ALTO_MM - 2 * MARGEN_HOJA_MM;
+  const porMedida = new Map();
+  grupos.forEach((grupo) => {
+    const { w, h } = grupo[0];
+    const clave = `${w}x${h}`;
+    if (!porMedida.has(clave)) porMedida.set(clave, []);
+    porMedida.get(clave).push(grupo);
+  });
+  if (porMedida.size < 2) return null;
+
+  const familias = [...porMedida.values()].sort(([a], [b]) => a[0].w - b[0].w || a[0].h - b[0].h);
+  const opciones = familias.map((familia) => {
+    const w = familia[0][0].w;
+    const maxCols = Math.min(Math.max(...familia.map((g) => g.length)), Math.floor((anchoUtil + gap + 1e-8) / (w + gap)));
+    return Array.from({ length: maxCols }, (_, i) => {
+      const bloques = familia.map((g) => _armarGrillaBloque(g, gap, i + 1));
+      const ancho = Math.max(...bloques.map((caja) => caja.ancho));
+      const alto = bloques.reduce((total, caja) => total + caja.alto + gap, -gap);
+      return { ancho, alto, bloques };
+    });
+  });
+
+  const alturas = [...new Set(opciones.flat().map((opcion) => opcion.alto))]
+    .filter((alto) => alto <= altoUtil + 1e-8)
+    .sort((a, b) => a - b);
+  for (const alto of alturas) {
+    const franjas = opciones.map((lista) => lista.find((opcion) => opcion.alto <= alto));
+    if (franjas.some((franja) => !franja)) continue;
+    const ancho = franjas.reduce((total, franja) => total + franja.ancho + gap, -gap);
+    if (ancho <= anchoUtil + 1e-8) return franjas;
+  }
+  return null;
+}
+
+// Prioriza franjas separables con guillotina y usa filas cuando no caben.
 function reorganizarBotones(botones, gapMm) {
   const gap = gapMm ?? SEPARACION_MM;
   const margen = MARGEN_HOJA_MM;
-  const bloques = _agruparEnBloques(botones).map((miembros) => _armarGrillaBloque(miembros, gap));
+  const grupos = _agruparEnBloques(botones);
+  const franjas = _franjasPorMedida(grupos, gap);
+  if (franjas) {
+    let x = margen;
+    for (const franja of franjas) {
+      let y = margen;
+      for (const caja of franja.bloques) {
+        caja.colocar(x, y);
+        y += caja.alto + gap;
+      }
+      x += franja.ancho + gap;
+    }
+    return;
+  }
+
+  const bloques = grupos.map((miembros) => _armarGrillaBloque(miembros, gap));
   bloques.sort((a, b) => b.alto - a.alto || b.ancho - a.ancho);
   let x = margen, y = margen, altoFila = 0;
   bloques.forEach((caja) => {
@@ -360,3 +409,4 @@ function parseListaNumeros(texto) {
     .map(Number)
     .filter((n) => !Number.isNaN(n));
 }
+
